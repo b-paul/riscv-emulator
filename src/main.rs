@@ -93,14 +93,13 @@ impl Computer {
         // the x0 register should always be 0 (hopefully it doesn't get written to and then used)
         self.cpu.x[0] = 0;
 
-        let instruction =
-            u32::from_le_bytes(self.memory.read_bytes::<4>(self.cpu.pc as usize));
+        let instruction = u32::from_le_bytes(self.memory.read_bytes(self.cpu.pc as usize));
         let opcode = instruction & 0x7f;
-        let rd = ((instruction >> 7) & 0x1f) as usize;
-        let rs1 = ((instruction >> 15) & 0x1f) as usize;
-        let rs2 = ((instruction >> 20) & 0x1f) as usize;
-        let funct3 = (instruction >> 12) & 0x7;
-        let funct7 = (instruction >> 25) & 0x7f;
+        let rd = (instruction >> 7 & 0x1f) as usize;
+        let rs1 = (instruction >> 15 & 0x1f) as usize;
+        let rs2 = (instruction >> 20 & 0x1f) as usize;
+        let funct3 = instruction >> 12 & 0x7;
+        let funct7 = instruction >> 25 & 0x7f;
 
         // We implement RV64I
 
@@ -110,7 +109,7 @@ impl Computer {
                 // note that we convert instruction to an i32 for sign extension.
                 let uinp = self.cpu.x[rs1];
                 let iinp = uinp as i64;
-                let uimm = (((instruction as i32) >> 20) % 0x1000) as u64;
+                let uimm = ((instruction as i32 >> 20) % 0x1000) as u64;
                 let iimm = uimm as i64;
                 match funct3 {
                     // ADDI
@@ -126,8 +125,8 @@ impl Computer {
                     // ANDI
                     0b101 => self.cpu.x[rd] = uimm & uinp,
                     0b110 => {
-                        let upper = (instruction >> 26) & 0x3f;
-                        let shamt = (instruction >> 20) & 0x3f;
+                        let upper = instruction >> 26 & 0x3f;
+                        let shamt = instruction >> 20 & 0x3f;
                         match upper {
                             // SLLI
                             0b000000 => self.cpu.x[rd] = uinp << shamt,
@@ -135,8 +134,8 @@ impl Computer {
                         }
                     }
                     0b111 => {
-                        let upper = (instruction >> 26) & 0x3f;
-                        let shamt = (instruction >> 20) & 0x3f;
+                        let upper = instruction >> 26 & 0x3f;
+                        let shamt = instruction >> 20 & 0x3f;
                         match upper {
                             // SRLI
                             0b0000000 => self.cpu.x[rd] = uinp >> shamt,
@@ -155,31 +154,31 @@ impl Computer {
                 match funct3 {
                     // ADDIW
                     0b000 => {
-                        let imm = ((instruction as i32) >> 20) & 0xfff;
+                        let imm = instruction as i32 >> 20 & 0xfff;
                         self.cpu.x[rd] = (imm + iinp) as i64 as u64
                     }
                     0b001 => {
-                        let upper = (instruction >> 25) & 0x1f;
+                        let upper = instruction >> 25 & 0x1f;
                         match upper {
                             // SLLIW
                             0b000000 => {
-                                let shamt = (instruction >> 20) & 0x1f;
+                                let shamt = instruction >> 20 & 0x1f;
                                 self.cpu.x[rd] = (uinp << shamt) as u64;
                             }
                             _ => panic!("Unimplemented instruction {instruction:b}"),
                         }
                     }
                     0b101 => {
-                        let upper = (instruction >> 25) & 0x1f;
+                        let upper = instruction >> 25 & 0x1f;
                         match upper {
                             // SRLIW
                             0b000000 => {
-                                let shamt = (instruction >> 20) & 0x1f;
+                                let shamt = instruction >> 20 & 0x1f;
                                 self.cpu.x[rd] = (uinp >> shamt) as u64;
                             }
                             // SRAIW
                             0b010000 => {
-                                let shamt = (instruction >> 20) & 0x1f;
+                                let shamt = instruction >> 20 & 0x1f;
                                 self.cpu.x[rd] = (iinp >> shamt) as u64;
                             }
                             _ => panic!("Unimplemented instruction {instruction:b}"),
@@ -191,13 +190,13 @@ impl Computer {
 
             // LUI
             0b0110111 => {
-                let imm = (instruction) & (0xfffff << 12);
+                let imm = instruction & 0xfffff << 12;
                 self.cpu.x[rd] = imm as u64;
             }
 
             // AUIPC
             0b0010111 => {
-                let imm = (instruction) & (0xfffff << 12);
+                let imm = instruction & 0xfffff << 12;
                 self.cpu.x[rd] = imm as u64 + self.cpu.pc;
             }
 
@@ -244,8 +243,7 @@ impl Computer {
                     }
                     // SRA
                     (0b101, 0b0100000) => {
-                        self.cpu.x[rd] =
-                            ((self.cpu.x[rs1] as i64) >> (self.cpu.x[rs2] & 0x3f)) as u64
+                        self.cpu.x[rd] = (self.cpu.x[rs1] as i64 >> (self.cpu.x[rs2] & 0x3f)) as u64
                     }
                     _ => panic!("Unimplemented instruction {instruction:b}"),
                 }
@@ -275,8 +273,7 @@ impl Computer {
                     }
                     // SRAW
                     (0b101, 0b0100000) => {
-                        self.cpu.x[rd] = ((self.cpu.x[rs1] as i32)
-                            >> (self.cpu.x[rs2] as u32 & 0x1f))
+                        self.cpu.x[rd] = (self.cpu.x[rs1] as i32 >> (self.cpu.x[rs2] as u32 & 0x1f))
                             as i64 as u64
                     }
                     _ => panic!("Unimplemented instruction {instruction:b}"),
@@ -288,10 +285,10 @@ impl Computer {
             // JAL
             0b1101111 => {
                 // i don't trust this TODO double check
-                let offset = (instruction >> 21) & 0x3ff
-                    | (instruction >> 10) & 0x400
-                    | (instruction >> 1) & 0x7f800
-                    | (instruction >> 12) & 0x80000;
+                let offset = instruction >> 21 & 0x3ff
+                    | instruction >> 10 & 0x400
+                    | instruction >> 1 & 0x7f800
+                    | instruction >> 12 & 0x80000;
                 let offset = ((offset as i32) << 12 >> 12) as i64;
                 let offset = offset * 2;
                 self.cpu.x[rd] = self.cpu.pc;
@@ -303,7 +300,7 @@ impl Computer {
             0b1100111 => {
                 // JALR
                 if funct3 == 0b000 {
-                    let offset = ((instruction >> 20) & 0xfff) as u64;
+                    let offset = (instruction >> 20 & 0xfff) as u64;
                     self.cpu.x[rd] = self.cpu.pc;
                     self.cpu.pc = self.cpu.x[rs1].wrapping_add(offset);
                     if self.cpu.pc % 4 != 0 {
@@ -315,10 +312,10 @@ impl Computer {
             }
             0b1100011 => {
                 // i don't trust this TODO double check
-                let offset = (instruction >> 8) & 0xf
-                    | (instruction >> 21) & 0x1f0
-                    | (instruction << 2) & 0x200
-                    | (instruction >> 20) & 0x400;
+                let offset = instruction >> 8 & 0xf
+                    | instruction >> 21 & 0x1f0
+                    | instruction << 2 & 0x200
+                    | instruction >> 20 & 0x400;
                 let offset = ((offset as i32) << 20 >> 20) as u64;
                 let offset = (offset * 2).wrapping_sub(4096);
                 match funct3 {
@@ -367,7 +364,7 @@ impl Computer {
 
             // Load and Store
             0b0000011 => {
-                let imm = (((instruction as i32) >> 20) & 0xfff) as u64;
+                let imm = (instruction as i32 >> 20 & 0xfff) as u64;
                 let addr = self.cpu.x[rs1].wrapping_add(imm) as usize;
                 match funct3 {
                     // LB
@@ -391,25 +388,22 @@ impl Computer {
                     }
                     // LHU
                     0b101 => {
-                        self.cpu.x[rd] =
-                            u16::from_le_bytes(self.memory.read_bytes(addr)) as u64
+                        self.cpu.x[rd] = u16::from_le_bytes(self.memory.read_bytes(addr)) as u64
                     }
                     // LWU
                     0b110 => {
-                        self.cpu.x[rd] =
-                            u32::from_le_bytes(self.memory.read_bytes(addr)) as u64
+                        self.cpu.x[rd] = u32::from_le_bytes(self.memory.read_bytes(addr)) as u64
                     }
                     // LD
                     0b011 => {
-                        self.cpu.x[rd] =
-                            u64::from_le_bytes(self.memory.read_bytes(addr)) as u64
+                        self.cpu.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr)) as u64
                     }
                     _ => panic!("Unimplemented instruction {instruction:b}"),
                 }
             }
             0b0100011 => {
-                let imm = (((instruction as i64) >> 7) & 0x1f
-                    | ((instruction as i64) >> 20) & 0xfe0) as u64;
+                let imm =
+                    (instruction as i64 >> 7 & 0x1f | instruction as i64 >> 20 & 0xfe0) as u64;
                 let addr = self.cpu.x[rs1].wrapping_add(imm) as usize;
                 match funct3 {
                     // SB
