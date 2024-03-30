@@ -89,9 +89,319 @@ impl Computer {
         }
     }
 
+    fn try_16bit_instruction(&mut self) -> bool {
+        let instruction = u16::from_le_bytes(self.memory.read_bytes(self.cpu.pc as usize));
+        let opcode = instruction & 0x3;
+        let funct3 = (instruction >> 13) & 0x7;
+
+        if opcode == 0b11 {
+            return false;
+        }
+
+        if instruction == 0 {
+            panic!("Illegal instruction {instruction:b}");
+        }
+
+        match opcode {
+            0b00 => {
+                let rd = (instruction >> 2 & 0x7) as usize + 8;
+                let rs1 = (instruction >> 7 & 0x7) as usize + 8;
+                let rs2 = (instruction >> 2 & 0x7) as usize + 8;
+                match funct3 {
+                    // C.LW
+                    0b010 => {
+                        let offset = instruction >> 4 & 0x4
+                            | instruction >> 7 & 0x38
+                            | instruction << 1 & 0x40;
+                        let addr = self.cpu.x[rs1] as usize + offset as usize;
+                        self.cpu.x[rd] = u32::from_le_bytes(self.memory.read_bytes(addr)) as u64;
+                    }
+                    // C.LD
+                    0b011 => {
+                        let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
+                        let addr = self.cpu.x[rs1] as usize + offset as usize;
+                        self.cpu.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr));
+                    }
+                    // C.SW
+                    0b110 => {
+                        let offset = instruction >> 4 & 0x4
+                            | instruction >> 7 & 0x38
+                            | instruction << 1 & 0x40;
+                        let addr = self.cpu.x[rs1] as usize + offset as usize;
+                        self.memory
+                            .write_bytes(addr, &(self.cpu.x[rs2] as u32).to_le_bytes());
+                    }
+                    // C.SD
+                    0b111 => {
+                        let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
+                        let addr = self.cpu.x[rs1] as usize + offset as usize;
+                        self.memory
+                            .write_bytes(addr, &(self.cpu.x[rs2]).to_le_bytes());
+                    }
+                    // C.ADDI4SPN
+                    0b000 => {
+                        let rd = (instruction >> 2 & 0x7) as usize + 8;
+                        let nzuimm = (instruction >> 4 & 0x4
+                            | instruction >> 2 & 0x8
+                            | instruction >> 7 & 0x30
+                            | instruction >> 1 & 0x3c) as u64;
+                        self.cpu.x[2] = self.cpu.x[2].wrapping_add(nzuimm);
+                        self.cpu.x[rd] = self.cpu.x[2];
+                    }
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            0b01 => {
+                match funct3 {
+                    // C.J
+                    0b101 => {
+                        let offset = instruction >> 2 & 0x6
+                            | instruction >> 7 & 0x10
+                            | instruction << 3 & 0x20
+                            | instruction >> 1 & 0x40
+                            | instruction << 1 & 0x80
+                            | instruction >> 1 & 0x300
+                            | instruction << 2 & 0x400
+                            | instruction >> 1 & 0x800;
+                        self.cpu.pc = self.cpu.pc.wrapping_add(offset as u64).wrapping_sub(2);
+                    }
+                    // C.BEQZ
+                    0b110 => {
+                        let rs1 = (instruction >> 7 & 0x7) as usize + 8;
+                        let offset = instruction >> 2 & 0x6
+                            | instruction >> 7 & 0x18
+                            | instruction << 3 & 0x20
+                            | instruction << 1 & 0xc0
+                            | instruction >> 4 & 0x100;
+                        let offset = offset as i8 as i64 as u64;
+                        if self.cpu.x[rs1] == 0 {
+                            self.cpu.pc = self.cpu.pc.wrapping_add(offset).wrapping_sub(2);
+                        }
+                    }
+                    // C.BNEZ
+                    0b111 => {
+                        let rs1 = (instruction >> 7 & 0x7) as usize + 8;
+                        let offset = instruction >> 2 & 0x6
+                            | instruction >> 7 & 0x18
+                            | instruction << 3 & 0x20
+                            | instruction << 1 & 0xc0
+                            | instruction >> 4 & 0x100;
+                        let offset = offset as i8 as i64 as u64;
+                        if self.cpu.x[rs1] != 0 {
+                            self.cpu.pc = self.cpu.pc.wrapping_add(offset).wrapping_sub(2);
+                        }
+                    }
+                    // C.LI
+                    0b010 => {
+                        let rd = (instruction >> 7 & 0x1f) as usize;
+                        let imm = (((instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as i8) << 2
+                            >> 2) as i64 as u64;
+                        self.cpu.x[rd] = imm;
+                    }
+                    0b011 => {
+                        let rd = (instruction >> 7 & 0x1f) as usize;
+                        // C.ADDI16SP
+                        if rd == 2 {
+                            let nzimm = (((instruction >> 2 & 0x10
+                                | instruction << 3 & 0x20
+                                | instruction << 1 & 0x40
+                                | instruction << 4 & 0x180
+                                | instruction >> 3 & 0x200)
+                                as i16)
+                                << 6
+                                >> 6) as i64 as u64;
+                            if nzimm == 0 {
+                                panic!("Unimplemented instruction {instruction:b}");
+                            }
+                            self.cpu.x[2] = self.cpu.x[2].wrapping_add(nzimm);
+                        } else {
+                            // C.LUI
+                            let imm = (((instruction as i32) << 10 & 0x1f000
+                                | (instruction as i32) << 5 & 0x20000)
+                                << 14
+                                >> 14) as i64 as u64;
+                            if imm == 0 {
+                                panic!("Unimplemented instruction {instruction:b}");
+                            }
+                            self.cpu.x[rd] = imm;
+                        }
+                    }
+                    // C.ADDI
+                    0b000 => {
+                        let rd = (instruction >> 7 & 0x1f) as usize;
+                        let nzimm = (((instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as i8)
+                            << 2
+                            >> 2) as i64 as u64;
+                        self.cpu.x[rd] = (self.cpu.x[rd]).wrapping_add(nzimm);
+                    }
+                    // C.ADDIW
+                    0b001 => {
+                        let rd = (instruction >> 7 & 0x1f) as usize;
+                        let imm = (((instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as i8) << 2
+                            >> 2) as i32;
+                        self.cpu.x[rd] = (self.cpu.x[rd] as i32).wrapping_add(imm) as i64 as u64;
+                    }
+                    0b100 => {
+                        let rd = (instruction >> 7 & 0x7) as usize + 8;
+                        let funct2 = instruction >> 10 & 0x3;
+                        match funct2 {
+                            // C.SRLI
+                            0b00 => {
+                                let shamt =
+                                    (instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as u32;
+                                self.cpu.x[rd] = self.cpu.x[rd].wrapping_shr(shamt);
+                            }
+                            // C.SRAI
+                            0b01 => {
+                                let shamt =
+                                    (instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as u32;
+                                self.cpu.x[rd] = (self.cpu.x[rd] as i64).wrapping_shr(shamt) as u64;
+                            }
+                            // C.ANDI
+                            0b10 => {
+                                let imm =
+                                    (instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as u64;
+                                self.cpu.x[rd] &= imm;
+                            }
+                            0b11 => {
+                                let rs2 = (instruction >> 2 & 0x7) as usize + 8;
+                                let funct3 = instruction >> 5 & 0x3 | instruction >> 8 & 0x4;
+                                match funct3 {
+                                    // C.AND
+                                    0b011 => self.cpu.x[rd] &= self.cpu.x[rs2],
+                                    // C.OR
+                                    0b010 => self.cpu.x[rd] |= self.cpu.x[rs2],
+                                    // C.XOR
+                                    0b001 => self.cpu.x[rd] &= self.cpu.x[rs2],
+                                    // C.SUB
+                                    0b000 => {
+                                        self.cpu.x[rd] =
+                                            self.cpu.x[rd].wrapping_sub(self.cpu.x[rs2])
+                                    }
+                                    // C.ADDW
+                                    0b101 => {
+                                        self.cpu.x[rd] =
+                                            self.cpu.x[rd].wrapping_add(self.cpu.x[rs2]) as i32
+                                                as i64
+                                                as u64
+                                    }
+                                    // C.SUBW
+                                    0b100 => {
+                                        self.cpu.x[rd] =
+                                            self.cpu.x[rd].wrapping_sub(self.cpu.x[rs2]) as i32
+                                                as i64
+                                                as u64
+                                    }
+                                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                                }
+                            }
+                            _ => panic!("Unimplemented instruction {instruction:b}"),
+                        }
+                    }
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            0b10 => {
+                match funct3 {
+                    // C.LWSP
+                    0b010 => {
+                        let rd = (instruction >> 7 & 0x1f) as usize;
+                        if rd == 0 {
+                            panic!("Unimplemented instruction {instruction:b}");
+                        }
+                        let offset = instruction >> 2 & 0x1c
+                            | instruction >> 7 & 0x20
+                            | instruction << 4 & 0xc0;
+                        let addr = self.cpu.x[2] as usize + offset as usize;
+                        self.cpu.x[rd] = u32::from_le_bytes(self.memory.read_bytes(addr)) as u64;
+                    }
+                    // C.LDSP
+                    0b011 => {
+                        let rd = (instruction >> 7 & 0x1f) as usize;
+                        if rd == 0 {
+                            panic!("Unimplemented instruction {instruction:b}");
+                        }
+                        let offset = instruction >> 2 & 0x18
+                            | instruction >> 7 & 0x20
+                            | instruction << 4 & 0x1c0;
+                        let addr = self.cpu.x[2] as usize + offset as usize;
+                        self.cpu.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr));
+                    }
+                    // C.SWSP
+                    0b110 => {
+                        let rs2 = (instruction >> 2 & 0x1f) as usize;
+                        let offset = instruction >> 7 & 0x7c | instruction >> 1 & 0x180;
+                        let addr = self.cpu.x[2] as usize + offset as usize;
+                        self.memory
+                            .write_bytes(addr, &u32::to_le_bytes(self.cpu.x[rs2] as u32));
+                    }
+                    // C.SDSP
+                    0b111 => {
+                        let rs2 = (instruction >> 2 & 0x1f) as usize;
+                        let offset = instruction >> 7 & 0x78 | instruction >> 1 & 0x380;
+                        let addr = self.cpu.x[2] as usize + offset as usize;
+                        self.memory
+                            .write_bytes(addr, &u64::to_le_bytes(self.cpu.x[rs2]));
+                    }
+                    0b100 => {
+                        let rs1 = (instruction >> 7 & 0x1f) as usize;
+                        let rs2 = (instruction >> 2 & 0x1f) as usize;
+                        let funct4 = (instruction >> 12 & 0x1) == 1;
+                        if rs1 == 0 {
+                            panic!("Unimplemented instruction {instruction:b}");
+                        }
+                        match (rs1 == 0, rs2 == 0, funct4) {
+                            // C.JR
+                            (false, true, false) => {
+                                self.cpu.pc = self.cpu.x[rs1].wrapping_sub(2);
+                            }
+                            // C.JALR
+                            (false, true, true) => {
+                                let tmp = self.cpu.x[rs1];
+                                self.cpu.x[1] = self.cpu.pc;
+                                self.cpu.pc = tmp.wrapping_sub(2);
+                            }
+                            // C.MV
+                            (false, false, false) => {
+                                self.cpu.x[rs1] = self.cpu.x[rs2];
+                            }
+                            (false, false, true) => {
+                                self.cpu.x[rs1] = self.cpu.x[rs1].wrapping_add(self.cpu.x[rs2]);
+                            }
+                            // C.EBREAK
+                            (true, true, true) => {
+                                todo!("C.EBREAK")
+                            }
+                            _ => panic!("Unimplemented instruction {instruction:b}"),
+                        }
+                    }
+                    // C.SLLI
+                    0b000 => {
+                        let rd = (instruction >> 7 & 0x1f) as usize;
+                        let shamt = (instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as u32;
+                        self.cpu.x[rd] = self.cpu.x[rd].wrapping_shl(shamt);
+                    }
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            _ => panic!("Unimplemented instruction {instruction:b}"),
+        }
+
+        self.cpu.pc = self.cpu.pc.wrapping_add(2);
+
+        true
+    }
+
     fn run_instruction(&mut self) {
         // the x0 register should always be 0 (hopefully it doesn't get written to and then used)
         self.cpu.x[0] = 0;
+
+        if self.try_16bit_instruction() {
+            return;
+        }
 
         let instruction = u32::from_le_bytes(self.memory.read_bytes(self.cpu.pc as usize));
         let opcode = instruction & 0x7f;
@@ -129,7 +439,7 @@ impl Computer {
                         let shamt = instruction >> 20 & 0x3f;
                         match upper {
                             // SLLI
-                            0b000000 => self.cpu.x[rd] = uinp << shamt,
+                            0b000000 => self.cpu.x[rd] = uinp.wrapping_shl(shamt),
                             _ => panic!("Unimplemented instruction {instruction:b}"),
                         }
                     }
@@ -138,9 +448,9 @@ impl Computer {
                         let shamt = instruction >> 20 & 0x3f;
                         match upper {
                             // SRLI
-                            0b0000000 => self.cpu.x[rd] = uinp >> shamt,
+                            0b0000000 => self.cpu.x[rd] = uinp.wrapping_shr(shamt),
                             // SRAI
-                            0b010000 => self.cpu.x[rd] = (uinp >> shamt) as u64,
+                            0b010000 => self.cpu.x[rd] = (iinp.wrapping_shr(shamt)) as u64,
                             _ => panic!("Unimplemented instruction {instruction:b}"),
                         }
                     }
@@ -291,7 +601,7 @@ impl Computer {
                     | instruction >> 12 & 0x80000;
                 let offset = ((offset as i32) << 12 >> 12) as i64;
                 let offset = offset * 2;
-                self.cpu.x[rd] = self.cpu.pc;
+                self.cpu.x[rd] = self.cpu.pc.wrapping_add(4);
                 self.cpu.pc = self.cpu.pc.wrapping_add(offset as u64).wrapping_sub(4);
                 if self.cpu.pc % 4 != 0 {
                     panic!("Jumped to misaligned instruction")
@@ -301,8 +611,9 @@ impl Computer {
                 // JALR
                 if funct3 == 0b000 {
                     let offset = (instruction >> 20 & 0xfff) as u64;
+                    let tmp = self.cpu.x[rs1];
                     self.cpu.x[rd] = self.cpu.pc;
-                    self.cpu.pc = self.cpu.x[rs1].wrapping_add(offset);
+                    self.cpu.pc = tmp.wrapping_add(offset).wrapping_sub(4);
                     if self.cpu.pc % 4 != 0 {
                         panic!("Jumped to misaligned instruction")
                     }
@@ -395,9 +706,7 @@ impl Computer {
                         self.cpu.x[rd] = u32::from_le_bytes(self.memory.read_bytes(addr)) as u64
                     }
                     // LD
-                    0b011 => {
-                        self.cpu.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr)) as u64
-                    }
+                    0b011 => self.cpu.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr)),
                     _ => panic!("Unimplemented instruction {instruction:b}"),
                 }
             }
@@ -447,7 +756,7 @@ impl Computer {
             _ => panic!("Unimplemented instruction {instruction:b}"),
         }
 
-        self.cpu.pc += 4;
+        self.cpu.pc = self.cpu.pc.wrapping_add(4);
     }
 }
 
