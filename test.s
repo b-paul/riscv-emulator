@@ -6,9 +6,13 @@ _start:
     call hello_world
 
 exit:
-    li a7, 4
-    li a0, 0
-    ecall
+    li a4, 9
+    mul a7, a7, a4
+    li a4, 2
+    div a7, a7, a4
+    li a4, 3
+    rem a0, a7, a4
+    ecall // should exit with exit code 1
 
 hello_world:
     li a7, 1
