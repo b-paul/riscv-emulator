@@ -555,6 +555,46 @@ impl Computer {
                     (0b101, 0b0100000) => {
                         self.cpu.x[rd] = (self.cpu.x[rs1] as i64 >> (self.cpu.x[rs2] & 0x3f)) as u64
                     }
+                    // MUL
+                    (0b000, 0b0000001) => {
+                        self.cpu.x[rd] = self.cpu.x[rs1].wrapping_mul(self.cpu.x[rs2])
+                    }
+                    // MULH
+                    (0b001, 0b0000001) => {
+                        self.cpu.x[rd] = ((self.cpu.x[rs1] as i64 as i128)
+                            .wrapping_mul(self.cpu.x[rs2] as i64 as i128)
+                            >> 64) as u64
+                    }
+                    // MULHU
+                    (0b011, 0b0000001) => {
+                        self.cpu.x[rd] = ((self.cpu.x[rs1] as u128)
+                            .wrapping_mul(self.cpu.x[rs2] as u128)
+                            >> 64) as u64
+                    }
+                    // MULHSU
+                    (0b010, 0b0000001) => {
+                        self.cpu.x[rd] = ((self.cpu.x[rs1] as i64 as i128)
+                            .wrapping_mul(self.cpu.x[rs2] as u128 as i128)
+                            >> 64) as u64
+                    }
+                    // DIV
+                    (0b100, 0b0000001) => {
+                        self.cpu.x[rd] =
+                            (self.cpu.x[rs1] as i64).wrapping_div(self.cpu.x[rs2] as i64) as u64
+                    }
+                    // DIVU
+                    (0b101, 0b0000001) => {
+                        self.cpu.x[rd] = (self.cpu.x[rs1]).wrapping_div(self.cpu.x[rs2])
+                    }
+                    // REM
+                    (0b110, 0b0000001) => {
+                        self.cpu.x[rd] =
+                            (self.cpu.x[rs1] as i64).wrapping_rem(self.cpu.x[rs2] as i64) as u64
+                    }
+                    // REMU
+                    (0b111, 0b0000001) => {
+                        self.cpu.x[rd] = (self.cpu.x[rs1]).wrapping_rem(self.cpu.x[rs2])
+                    }
                     _ => panic!("Unimplemented instruction {instruction:b}"),
                 }
             }
@@ -586,6 +626,36 @@ impl Computer {
                         self.cpu.x[rd] = (self.cpu.x[rs1] as i32 >> (self.cpu.x[rs2] as u32 & 0x1f))
                             as i64 as u64
                     }
+                    // MULW
+                    (0b000, 0b0000001) => {
+                        self.cpu.x[rd] = (self.cpu.x[rs1] as i32)
+                            .wrapping_mul(self.cpu.x[rs2] as i32)
+                            as i64 as u64;
+                    }
+                    // DIVW
+                    (0b100, 0b0000001) => {
+                        self.cpu.x[rd] = (self.cpu.x[rs1] as i32)
+                            .wrapping_div(self.cpu.x[rs2] as i32)
+                            as i64 as u64;
+                    }
+                    // DIVUW
+                    (0b101, 0b0000001) => {
+                        self.cpu.x[rd] = (self.cpu.x[rs1] as u32)
+                            .wrapping_div(self.cpu.x[rs2] as u32)
+                            as i32 as i64 as u64;
+                    }
+                    // REMW
+                    (0b110, 0b0000001) => {
+                        self.cpu.x[rd] = (self.cpu.x[rs1] as i32)
+                            .wrapping_rem(self.cpu.x[rs2] as i32)
+                            as i64 as u64;
+                    }
+                    // REMUW
+                    (0b111, 0b0000001) => {
+                        self.cpu.x[rd] = (self.cpu.x[rs1] as u32)
+                            .wrapping_rem(self.cpu.x[rs2] as u32)
+                            as i32 as i64 as u64;
+                    }
                     _ => panic!("Unimplemented instruction {instruction:b}"),
                 }
             }
@@ -603,9 +673,6 @@ impl Computer {
                 let offset = offset * 2;
                 self.cpu.x[rd] = self.cpu.pc.wrapping_add(4);
                 self.cpu.pc = self.cpu.pc.wrapping_add(offset as u64).wrapping_sub(4);
-                if self.cpu.pc % 4 != 0 {
-                    panic!("Jumped to misaligned instruction")
-                }
             }
             0b1100111 => {
                 // JALR
@@ -614,9 +681,6 @@ impl Computer {
                     let tmp = self.cpu.x[rs1];
                     self.cpu.x[rd] = self.cpu.pc;
                     self.cpu.pc = tmp.wrapping_add(offset).wrapping_sub(4);
-                    if self.cpu.pc % 4 != 0 {
-                        panic!("Jumped to misaligned instruction")
-                    }
                 } else {
                     panic!("Unimplemented instruction {instruction:b}");
                 }
@@ -667,9 +731,6 @@ impl Computer {
                         }
                     }
                     _ => panic!("Unimplemented instruction {instruction:b}"),
-                }
-                if self.cpu.pc % 4 != 0 {
-                    panic!("Jumped to misaligned instruction")
                 }
             }
 
@@ -739,10 +800,11 @@ impl Computer {
 
             // FENCE
             0b0001111 => {
-                todo!("FENCE");
+                todo!("FENCE"); // i dont think anything needs to be done here until some sort of
+                                // instruction reordering is implemented
             }
 
-            // Environment call and breakpoints
+            // System
             0b1110011 => match instruction {
                 // ECALL
                 0b00000000000000000000000001110011 => self.syscall(),
