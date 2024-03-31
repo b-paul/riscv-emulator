@@ -1,4 +1,5 @@
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct Cpu {
     x: [u64; 32],
@@ -19,7 +20,7 @@ struct Memory {
 impl Memory {
     fn new(size: usize) -> Memory {
         Memory {
-            bytes: vec![0; size].into(),
+            bytes: vec![0; size].into_boxed_slice(),
             size,
         }
     }
@@ -45,15 +46,27 @@ impl Memory {
 }
 
 struct Computer {
-    cpu: Cpu,
     memory: Memory,
+
+    cpu: Cpu,
+
+    // A valid reservation will always have the bottom 2 bits set to 0, since they must be aligned
+    // to a 4 byte boundary. This means we can encode information in these bottom bits!
+    // 00 : No reservation
+    // 01 : Word reservation
+    // 10 : Double word reservation
+    // 11 : unused
+    reservation: AtomicUsize,
 }
 
 impl Computer {
     fn new(mem_size: usize) -> Self {
         Computer {
-            cpu: Cpu::new(),
             memory: Memory::new(mem_size),
+
+            cpu: Cpu::new(),
+
+            reservation: AtomicUsize::new(0),
         }
     }
 
@@ -630,31 +643,31 @@ impl Computer {
                     (0b000, 0b0000001) => {
                         self.cpu.x[rd] = (self.cpu.x[rs1] as i32)
                             .wrapping_mul(self.cpu.x[rs2] as i32)
-                            as i64 as u64;
+                            as i64 as u64
                     }
                     // DIVW
                     (0b100, 0b0000001) => {
                         self.cpu.x[rd] = (self.cpu.x[rs1] as i32)
                             .wrapping_div(self.cpu.x[rs2] as i32)
-                            as i64 as u64;
+                            as i64 as u64
                     }
                     // DIVUW
                     (0b101, 0b0000001) => {
                         self.cpu.x[rd] = (self.cpu.x[rs1] as u32)
                             .wrapping_div(self.cpu.x[rs2] as u32)
-                            as i32 as i64 as u64;
+                            as i32 as i64 as u64
                     }
                     // REMW
                     (0b110, 0b0000001) => {
                         self.cpu.x[rd] = (self.cpu.x[rs1] as i32)
                             .wrapping_rem(self.cpu.x[rs2] as i32)
-                            as i64 as u64;
+                            as i64 as u64
                     }
                     // REMUW
                     (0b111, 0b0000001) => {
                         self.cpu.x[rd] = (self.cpu.x[rs1] as u32)
                             .wrapping_rem(self.cpu.x[rs2] as u32)
-                            as i32 as i64 as u64;
+                            as i32 as i64 as u64
                     }
                     _ => panic!("Unimplemented instruction {instruction:b}"),
                 }
@@ -814,6 +827,186 @@ impl Computer {
                 }
                 _ => panic!("Unimplemented instruction {instruction:b}"),
             },
+
+            0b0101111 => {
+                let funct5 = instruction >> 27 & 0x1f;
+                let _aq = instruction >> 26 & 1 != 0;
+                let _rl = instruction >> 25 & 1 != 0;
+                let addr = self.cpu.x[rs1] as usize;
+                if funct3 == 0b010 && addr % 4 != 0 || funct3 == 0b011 && addr % 8 != 0 {
+                    panic!("Misaligned memory addres {addr:x}");
+                }
+                match (funct5, funct3) {
+                    // LR.W
+                    (0b00010, 0b010) => {
+                        if rs2 != 0 {
+                            panic!("Unimplemented instruction {instruction:b}");
+                        }
+                        self.cpu.x[rd] =
+                            i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+
+                        self.reservation.store(addr | 0b01, Ordering::Relaxed);
+                    }
+                    // LR.D
+                    (0b00010, 0b011) => {
+                        if rs2 != 0 {
+                            panic!("Unimplemented instruction {instruction:b}");
+                        }
+                        self.cpu.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr));
+
+                        self.reservation.store(addr | 0b10, Ordering::Relaxed);
+                    }
+                    // SC.W
+                    (0b00011, 0b010) => {
+                        if self.reservation.load(Ordering::Acquire) == addr | 0b01 {
+                            let bytes = (self.cpu.x[rs2] as u32).to_le_bytes();
+                            self.memory.write_bytes(addr, &bytes);
+                            self.reservation.store(0, Ordering::Release);
+                            self.cpu.x[rd] = 0;
+                        } else {
+                            self.cpu.x[rd] = 1;
+                        }
+                    }
+                    // SC.D
+                    (0b00011, 0b011) => {
+                        if self.reservation.load(Ordering::Acquire) == addr | 0b10 {
+                            let bytes = self.cpu.x[rs2].to_le_bytes();
+                            self.memory.write_bytes(addr, &bytes);
+                            self.reservation.store(0, Ordering::Release);
+                            self.cpu.x[rd] = 0;
+                        } else {
+                            self.cpu.x[rd] = 1;
+                        }
+                    }
+                    // AMOSWAP.W
+                    (0b00001, 0b010) => {
+                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+                        let out = (self.cpu.x[rs2] as u32).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOSWAP.D
+                    (0b00001, 0b011) => {
+                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = self.cpu.x[rs2].to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOADD.W
+                    (0b00000, 0b010) => {
+                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+                        let out = (inp.wrapping_add(self.cpu.x[rs2]) as u32).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOADD.D
+                    (0b00000, 0b011) => {
+                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = inp.wrapping_add(self.cpu.x[rs2]).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOAND.W
+                    (0b01100, 0b010) => {
+                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+                        let out = ((inp & self.cpu.x[rs2]) as u32).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOAND.D
+                    (0b01100, 0b011) => {
+                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = (inp & self.cpu.x[rs2]).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOOR.W
+                    (0b01000, 0b010) => {
+                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+                        let out = ((inp | self.cpu.x[rs2]) as u32).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOOR.D
+                    (0b01000, 0b011) => {
+                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = (inp | self.cpu.x[rs2]).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOXOR.W
+                    (0b00100, 0b010) => {
+                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+                        let out = ((inp ^ self.cpu.x[rs2]) as u32).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOXOR.D
+                    (0b00100, 0b011) => {
+                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = (inp ^ self.cpu.x[rs2]).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOMAX.W
+                    (0b10100, 0b010) => {
+                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = inp.max(self.cpu.x[rs2] as i32).to_le_bytes();
+                        self.cpu.x[rd] = inp as u64;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOMAX.D
+                    (0b10100, 0b011) => {
+                        let inp = i64::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = inp.max(self.cpu.x[rs2] as i64).to_le_bytes();
+                        self.cpu.x[rd] = inp as u64;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOMIN.W
+                    (0b10000, 0b010) => {
+                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = inp.min(self.cpu.x[rs2] as i32).to_le_bytes();
+                        self.cpu.x[rd] = inp as u64;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOMIN.D
+                    (0b10000, 0b011) => {
+                        let inp = i64::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = inp.min(self.cpu.x[rs2] as i64).to_le_bytes();
+                        self.cpu.x[rd] = inp as u64;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOMAXU.W
+                    (0b11100, 0b010) => {
+                        let inp = u32::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = inp.max(self.cpu.x[rs2] as u32).to_le_bytes();
+                        self.cpu.x[rd] = inp as u64;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOMAXU.D
+                    (0b11100, 0b011) => {
+                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = inp.max(self.cpu.x[rs2]).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOMINU.W
+                    (0b11000, 0b010) => {
+                        let inp = u32::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = inp.min(self.cpu.x[rs2] as u32).to_le_bytes();
+                        self.cpu.x[rd] = inp as u64;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    // AMOMINU.D
+                    (0b11000, 0b011) => {
+                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        let out = inp.min(self.cpu.x[rs2]).to_le_bytes();
+                        self.cpu.x[rd] = inp;
+                        self.memory.write_bytes(addr, &out);
+                    }
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
 
             _ => panic!("Unimplemented instruction {instruction:b}"),
         }

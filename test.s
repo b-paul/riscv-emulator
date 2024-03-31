@@ -15,6 +15,10 @@ exit:
     ecall // should exit with exit code 1
 
 hello_world:
+    li a1, 0x20202020
+    la a0, hello
+    amoxor.w x0, a1, (a0)
+
     li a7, 1
     la a0, hello
     ecall
