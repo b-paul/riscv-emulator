@@ -1,6 +1,6 @@
 CC = clang
 LD = riscv64-linux-gnu-ld
-CFLAGS = -target riscv64 -march=rv64imac -c
+CFLAGS = -target riscv64 -march=rv64imac_zicsr -c
 
 all: test.s test.ld
 	${CC} ${CFLAGS} test.s -o test.o

@@ -19,6 +19,8 @@ hello_world:
     la a0, hello
     amoxor.w x0, a1, (a0)
 
+    csrw 0, a1 // test it builds
+
     li a7, 1
     la a0, hello
     ecall
