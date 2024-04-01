@@ -79,6 +79,18 @@ impl Computer {
         Ok(())
     }
 
+    fn get_csr(&self, csr: u32, _read: bool) -> u64 {
+        match csr {
+            _ => 0,
+        }
+    }
+
+    fn set_csr(&self, csr: u32, _val: u64, _write: bool) {
+        match csr {
+            _ => (),
+        }
+    }
+
     fn syscall(&mut self) {
         match self.cpu.x[17] {
             0x01 => {
@@ -818,15 +830,42 @@ impl Computer {
             }
 
             // System
-            0b1110011 => match instruction {
-                // ECALL
-                0b00000000000000000000000001110011 => self.syscall(),
-                // EBREAK
-                0b00000000000100000000000001110011 => {
-                    todo!("EBREAK");
+            0b1110011 => {
+                if funct3 == 0 {
+                    match instruction {
+                        // ECALL
+                        0b00000000000000000000000001110011 => self.syscall(),
+                        // EBREAK
+                        0b00000000000100000000000001110011 => {
+                            todo!("EBREAK");
+                        }
+                        _ => panic!("Unimplemented instruction {instruction:b}"),
+                    }
+                } else {
+                    // We must be doing a Zicsr instruction
+                    let csr = instruction >> 20 & 0xfff;
+                    let uimm = rs1 as u64;
+                    let read = !(funct3 & 3 == 0b01 && rs1 == 0);
+                    let write = !(funct3 & 2 == 0b10 && rs1 == 0);
+                    let csr_val = self.get_csr(csr, read);
+                    let new_val = match funct3 {
+                        // CSRRW
+                        0b001 => self.cpu.x[rs1],
+                        // CSRRS
+                        0b010 => csr_val | self.cpu.x[rs1],
+                        // CSRRC
+                        0b011 => csr_val & !self.cpu.x[rs1],
+                        // CSRRWI
+                        0b101 => uimm,
+                        // CSRRSI
+                        0b110 => csr_val | uimm,
+                        // CSRRCI
+                        0b111 => csr_val & !uimm,
+                        _ => panic!("Unimplemented instruction {instruction:b}"),
+                    };
+                    self.set_csr(csr, new_val, write);
                 }
-                _ => panic!("Unimplemented instruction {instruction:b}"),
-            },
+            }
 
             0b0101111 => {
                 let funct5 = instruction >> 27 & 0x1f;
