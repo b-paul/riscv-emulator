@@ -3,12 +3,19 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct Cpu {
     x: [u64; 32],
+    f: [f64; 32],
+    fcsr: u32,
     pc: u64,
 }
 
 impl Cpu {
     fn new() -> Self {
-        Cpu { x: [0; 32], pc: 0 }
+        Cpu {
+            x: [0; 32],
+            f: [0.; 32],
+            fcsr: 0,
+            pc: 0,
+        }
     }
 }
 
@@ -81,12 +88,15 @@ impl Computer {
 
     fn get_csr(&self, csr: u32, _read: bool) -> u64 {
         match csr {
+            // fcsr
+            0x003 => self.cpu.fcsr as u64,
             _ => 0,
         }
     }
 
-    fn set_csr(&self, csr: u32, _val: u64, _write: bool) {
+    fn set_csr(&mut self, csr: u32, val: u64, _write: bool) {
         match csr {
+            0x003 => self.cpu.fcsr = val as u32,
             _ => (),
         }
     }
@@ -1043,6 +1053,253 @@ impl Computer {
                         self.cpu.x[rd] = inp;
                         self.memory.write_bytes(addr, &out);
                     }
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            // TODO floats/doubles:
+            // - Set csr flags on illegal instruction etc
+            // - Canonicalize NaNs (whatever that means)
+
+            0b0000111 => {
+                let offset = (instruction >> 20 & 0xfff) as usize;
+                let addr = (self.cpu.x[rs1] as usize).wrapping_add(offset);
+                match funct3 {
+                    // FLW
+                    0b010 => {
+                        self.cpu.f[rd] = f32::from_le_bytes(self.memory.read_bytes(addr)) as f64;
+                    }
+                    // FLD
+                    0b011 => {
+                        self.cpu.f[rd] = f64::from_le_bytes(self.memory.read_bytes(addr));
+                    }
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            0b0100111 => {
+                let offset = (instruction >> 7 & 0x1f | instruction >> 25 & 0xfe0) as usize;
+                let addr = (self.cpu.x[rs1] as usize).wrapping_add(offset);
+                match funct3 {
+                    // FSW
+                    0b010 => {
+                        self.memory
+                            .write_bytes(addr, &(self.cpu.f[rs1] as f32).to_le_bytes());
+                    }
+                    // FSD
+                    0b011 => {
+                        self.memory
+                            .write_bytes(addr, &(self.cpu.f[rs1]).to_le_bytes());
+                    }
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            0b1010011 => {
+                let funct5 = instruction >> 27 & 0x1f;
+                let fmt = instruction >> 25 & 0x3;
+                let rm = instruction >> 12 & 0x7;
+                let a = self.cpu.f[rs1];
+                let b = self.cpu.f[rs2];
+
+                match (funct5, fmt, rm, rs2) {
+                    // FADD.S
+                    (0b00000, 0b00, _, _) => self.cpu.f[rd] = (a as f32 + b as f32) as f64,
+                    // FADD.D
+                    (0b00000, 0b01, _, _) => self.cpu.f[rd] = a + b,
+                    // FSUB.S
+                    (0b00001, 0b00, _, _) => self.cpu.f[rd] = (a as f32 - b as f32) as f64,
+                    // FSUB.D
+                    (0b00001, 0b01, _, _) => self.cpu.f[rd] = a - b,
+                    // FMUL.S
+                    (0b00010, 0b00, _, _) => self.cpu.f[rd] = (a as f32 * b as f32) as f64,
+                    // FMUL.D
+                    (0b00010, 0b01, _, _) => self.cpu.f[rd] = a * b,
+                    // FDIV.S
+                    (0b00011, 0b00, _, _) => self.cpu.f[rd] = (a as f32 / b as f32) as f64,
+                    // FDIV.D
+                    (0b00011, 0b01, _, _) => self.cpu.f[rd] = a / b,
+                    // FMIN.S
+                    (0b00101, 0b00, 0, _) => self.cpu.f[rd] = (a as f32).min(b as f32) as f64,
+                    // FMIN.D
+                    (0b00101, 0b01, 0, _) => self.cpu.f[rd] = a.min(b),
+                    // FMAX.S
+                    (0b00101, 0b00, 1, _) => self.cpu.f[rd] = (a as f32).max(b as f32) as f64,
+                    // FMAX.D
+                    (0b00101, 0b01, 1, _) => self.cpu.f[rd] = a.max(b),
+                    // FSQRT.S
+                    (0b00101, 0b00, _, 0) => self.cpu.f[rd] = (a as f32).sqrt() as f64,
+                    // FSQRT.D
+                    (0b00101, 0b01, _, 0) => self.cpu.f[rd] = a.sqrt(),
+                    // FCVT.W.S
+                    (0b11000, 0b00, _, 0) => {
+                        self.cpu.x[rd] = self.cpu.f[rs1] as f32 as i32 as i64 as u64
+                    }
+                    // FCVT.L.S
+                    (0b11000, 0b00, _, 1) => self.cpu.x[rd] = self.cpu.f[rs1] as f32 as i64 as u64,
+                    // FCVT.WU.S
+                    (0b11000, 0b00, _, 2) => self.cpu.x[rd] = self.cpu.f[rs1] as f32 as u32 as u64,
+                    // FCVT.LU.S
+                    (0b11000, 0b00, _, 3) => self.cpu.x[rd] = self.cpu.f[rs1] as f32 as u64,
+                    // FCVT.W.D
+                    (0b11001, 0b01, _, 0) => self.cpu.x[rd] = self.cpu.f[rs1] as i32 as i64 as u64,
+                    // FCVT.L.D
+                    (0b11000, 0b01, _, 1) => self.cpu.x[rd] = self.cpu.f[rs1] as i64 as u64,
+                    // FCVT.WU.D
+                    (0b11000, 0b01, _, 2) => self.cpu.x[rd] = self.cpu.f[rs1] as u32 as u64,
+                    // FCVT.LU.D
+                    (0b11000, 0b01, _, 3) => self.cpu.x[rd] = self.cpu.f[rs1] as u64,
+                    // FCVT.S.W
+                    (0b11010, 0b00, _, 0) => self.cpu.f[rd] = self.cpu.x[rs1] as i32 as f32 as f64,
+                    // FCVT.S.L
+                    (0b11010, 0b00, _, 1) => self.cpu.f[rd] = self.cpu.x[rs1] as i64 as f32 as f64,
+                    // FCVT.S.WU
+                    (0b11010, 0b00, _, 2) => self.cpu.f[rd] = self.cpu.x[rs1] as f32 as f64,
+                    // FCVT.S.LU
+                    (0b11010, 0b00, _, 3) => self.cpu.f[rd] = self.cpu.x[rs1] as f32 as f64,
+                    // FCVT.D.W
+                    (0b11010, 0b01, _, 0) => self.cpu.f[rd] = self.cpu.x[rs1] as i32 as f64,
+                    // FCVT.D.L
+                    (0b11010, 0b01, _, 1) => self.cpu.f[rd] = self.cpu.x[rs1] as i64 as f64,
+                    // FCVT.D.WU
+                    (0b11010, 0b01, _, 2) => self.cpu.f[rd] = self.cpu.x[rs1] as f64,
+                    // FCVT.D.LU
+                    (0b11010, 0b01, _, 3) => self.cpu.f[rd] = self.cpu.x[rs1] as f64,
+                    // FCVT.S.D
+                    (0b01000, 0b00, _, 1) => self.cpu.f[rd] = self.cpu.f[rs1] as f32 as f64,
+                    // FCVT.D.S
+                    (0b01000, 0b01, _, 0) => self.cpu.f[rd] = self.cpu.f[rs1] as f32 as f64,
+                    // FSGNJ.S
+                    (0b00100, 0b00, 0, _) => self.cpu.f[rd] = (a as f32).copysign(b as f32) as f64,
+                    // FSGNJN.S
+                    (0b00100, 0b00, 1, _) => self.cpu.f[rd] = (a as f32).copysign(-b as f32) as f64,
+                    // FSGNJX.S
+                    (0b00100, 0b00, 2, _) => {
+                        self.cpu.f[rd] = ((a as f32) * (-b as f32).signum()) as f64
+                    }
+                    // FSGNJ.D
+                    (0b00100, 0b01, 0, _) => self.cpu.f[rd] = (a).copysign(b),
+                    // FSGNJN.D
+                    (0b00100, 0b01, 1, _) => self.cpu.f[rd] = (a).copysign(-b),
+                    // FSGNJX.D
+                    (0b00100, 0b01, 2, _) => self.cpu.f[rd] = a * -b.signum(),
+                    // FMV.X.W
+                    (0b11100, 0b00, 0, 0) => {
+                        self.cpu.x[rd] = (self.cpu.f[rs1] as f32).to_bits() as u64
+                    }
+                    // FMV.W.X
+                    (0b11110, 0b00, 0, 0) => {
+                        self.cpu.f[rd] = f32::from_bits(self.cpu.x[rs1] as u32) as f64
+                    }
+                    // FMV.X.D
+                    (0b11100, 0b01, 0, 0) => self.cpu.x[rd] = self.cpu.f[rs1].to_bits(),
+                    // FMV.D.X
+                    (0b11110, 0b01, 0, 0) => self.cpu.f[rd] = f64::from_bits(self.cpu.x[rs1]),
+                    // FEQ.S
+                    (0b10100, 0b00, 0b010, _) => self.cpu.x[rd] = ((a as f32) == (b as f32)) as u64,
+                    // FEQ.D
+                    (0b10100, 0b01, 0b010, _) => self.cpu.x[rd] = (a == b) as u64,
+                    // FLT.S
+                    (0b10100, 0b00, 0b001, _) => self.cpu.x[rd] = ((a as f32) < (b as f32)) as u64,
+                    // FLT.D
+                    (0b10100, 0b01, 0b001, _) => self.cpu.x[rd] = (a < b) as u64,
+                    // FLE.S
+                    (0b10100, 0b00, 0b000, _) => self.cpu.x[rd] = ((a as f32) <= (b as f32)) as u64,
+                    // FLE.D
+                    (0b10100, 0b01, 0b000, _) => self.cpu.x[rd] = (a <= b) as u64,
+                    // FCLASS.S
+                    (0b11100, 0b00, 0b001, 0) => {
+                        use std::num::FpCategory;
+                        self.cpu.x[rd] = match ((a as f32).classify(), a >= 0.) {
+                            (FpCategory::Infinite, false) => 1 << 0,
+                            (FpCategory::Normal, false) => 1 << 1,
+                            (FpCategory::Subnormal, false) => 1 << 2,
+                            (FpCategory::Zero, false) => 1 << 3,
+                            (FpCategory::Zero, true) => 1 << 4,
+                            (FpCategory::Subnormal, true) => 1 << 5,
+                            (FpCategory::Normal, true) => 1 << 6,
+                            (FpCategory::Infinite, true) => 1 << 7,
+                            (FpCategory::Nan, false) => 1 << 8,
+                            (FpCategory::Nan, true) => 1 << 9,
+                        }
+                    }
+                    // FCLASS.D
+                    (0b11100, 0b01, 0b001, 0) => {
+                        use std::num::FpCategory;
+                        self.cpu.x[rd] = match (a.classify(), a >= 0.) {
+                            (FpCategory::Infinite, false) => 1 << 0,
+                            (FpCategory::Normal, false) => 1 << 1,
+                            (FpCategory::Subnormal, false) => 1 << 2,
+                            (FpCategory::Zero, false) => 1 << 3,
+                            (FpCategory::Zero, true) => 1 << 4,
+                            (FpCategory::Subnormal, true) => 1 << 5,
+                            (FpCategory::Normal, true) => 1 << 6,
+                            (FpCategory::Infinite, true) => 1 << 7,
+                            (FpCategory::Nan, false) => 1 << 8,
+                            (FpCategory::Nan, true) => 1 << 9,
+                        }
+                    }
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            // TODO raise exceptions on 0 * infinity or something like that
+            0b1000011 => {
+                let rs3 = (instruction >> 27 & 0x1f) as usize;
+                let fmt = instruction >> 25 & 0x3;
+                let a = self.cpu.f[rs1];
+                let b = self.cpu.f[rs2];
+                let c = self.cpu.f[rs3];
+                match fmt {
+                    // FMADD.S
+                    0b00 => self.cpu.f[rd] = ((a as f32) * (b as f32) + (c as f32)) as f64,
+                    // FMADD.D
+                    0b01 => self.cpu.f[rd] = a * b + c,
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            0b1000111 => {
+                let rs3 = (instruction >> 27 & 0x1f) as usize;
+                let fmt = instruction >> 25 & 0x3;
+                let a = self.cpu.f[rs1];
+                let b = self.cpu.f[rs2];
+                let c = self.cpu.f[rs3];
+                match fmt {
+                    // FMSUB.S
+                    0b00 => self.cpu.f[rd] = ((a as f32) * (b as f32) - (c as f32)) as f64,
+                    // FMSUB.D
+                    0b01 => self.cpu.f[rd] = a * b - c,
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            0b1001011 => {
+                let rs3 = (instruction >> 27 & 0x1f) as usize;
+                let fmt = instruction >> 25 & 0x3;
+                let a = self.cpu.f[rs1];
+                let b = self.cpu.f[rs2];
+                let c = self.cpu.f[rs3];
+                match fmt {
+                    // FNMADD.S
+                    0b00 => self.cpu.f[rd] = (-((a as f32) * (b as f32)) + (c as f32)) as f64,
+                    // FNMADD.D
+                    0b01 => self.cpu.f[rd] = -(a * b) + c,
+                    _ => panic!("Unimplemented instruction {instruction:b}"),
+                }
+            }
+
+            0b1001111 => {
+                let rs3 = (instruction >> 27 & 0x1f) as usize;
+                let fmt = instruction >> 25 & 0x3;
+                let a = self.cpu.f[rs1];
+                let b = self.cpu.f[rs2];
+                let c = self.cpu.f[rs3];
+                match fmt {
+                    // FNMSUB.S
+                    0b00 => self.cpu.f[rd] = (-((a as f32) * (b as f32)) - (c as f32)) as f64,
+                    // FNMSUB.D
+                    0b01 => self.cpu.f[rd] = -(a * b) - c,
                     _ => panic!("Unimplemented instruction {instruction:b}"),
                 }
             }
