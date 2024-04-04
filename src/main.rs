@@ -38,8 +38,25 @@ struct Emulator {
     memory: Memory,
 
     x: [u64; 32],
+
     f: [f64; 32],
     fcsr: u32,
+
+    misa: u64,
+    mstatus: u64,
+    mip: u64,
+    mie: u64,
+    mcycle: u64,
+    minstret: u64,
+    mcounteren: u32,
+    mcountinhibit: u32,
+    mscratch: u64,
+    mepc: u64,
+    mcause: u64,
+    mtval: u64,
+    menvcfg: u64,
+    mseccfg: u64,
+
     pc: u64,
 
     // A valid reservation will always have the bottom 2 bits set to 0, since they must be aligned
@@ -57,8 +74,25 @@ impl Emulator {
             memory: Memory::new(mem_size),
 
             x: [0; 32],
+
             f: [0.; 32],
             fcsr: 0,
+
+            misa: 2 << 62 | 0b00000000000001000100101101,
+            mstatus: 0,
+            mip: 0,
+            mie: 0,
+            mcycle: 0,
+            minstret: 0,
+            mcounteren: 0,
+            mcountinhibit: 0,
+            mscratch: 0,
+            mepc: 0,
+            mcause: 0,
+            mtval: 0,
+            menvcfg: 0,
+            mseccfg: 0,
+
             pc: 0,
 
             reservation: AtomicUsize::new(0),
@@ -76,6 +110,30 @@ impl Emulator {
 
     fn get_csr(&mut self, csr: u32, _read: bool) -> u64 {
         match csr {
+            // Machine csrs
+            0x301 => self.misa,                 // misa
+            0xF11 => 0,                         // mvendorid
+            0xF12 => 0,                         // marchid
+            0xF13 => 0,                         // mimpid
+            0xF14 => 0,                         // mhartid
+            0x300 => self.mstatus,              // mstatus
+            0x305 => 0,                         // mtvec
+            0x344 => 0,                         // mip
+            0x304 => 0,                         // mie
+            0xB00 => self.mcycle,               // mcycle
+            0xB02 => self.minstret,             // minstret
+            0xB04..=0xB1F => 0,                 // mhpmcounterN (unimplemented)
+            0x323..=0x33F => 0,                 // mhpmeventN (unimplemented)
+            0x306 => self.mcounteren as u64,    // mcounteren (reread when implementing U or S)
+            0x320 => self.mcountinhibit as u64, // mcountinhibit
+            0x340 => self.mscratch,             // mscratch
+            0x341 => self.mepc,                 // mepc
+            0x342 => self.mcause,               // mcause
+            0x343 => self.mtval,                // mtval
+            0xF15 => 0,                         // mconfigptr
+            0x30A => self.menvcfg,              // menvcfg
+            0x747 => self.mseccfg,              // mseccfg
+
             0x003 => self.fcsr as u64,
             _ => self.illegal_instruction(),
         }
@@ -83,6 +141,68 @@ impl Emulator {
 
     fn set_csr(&mut self, csr: u32, val: u64, _write: bool) {
         match csr {
+            // Machine csrs
+
+            // misa
+            // Don't allow modification of allowed extensions for simplicity
+            // (might change later)
+            0x301 => {}
+            // mstatus (0x7fffffc0ff800015 is the WPRI mask)
+            0x300 => {
+                self.mstatus = val & !0x7fffffc0ff800015;
+                // when privledge level x is not implemented xPP is read only 0.
+                self.mstatus &= !0x100;
+                // when privledge level x is not implemented xXL is read only 0.
+                self.mstatus &= !(3 << 30);
+                self.mstatus &= !(3 << 32);
+                // MPRIV is read only 0 if U is not implemented
+                self.mstatus &= !(1 << 17);
+                // MXR is read only 0 if S is not implemented
+                self.mstatus &= !(1 << 19);
+                // SUM is read only 0 if S is not implemented
+                self.mstatus &= !(1 << 18);
+                // We only support little endian, so MBE, SBE and UBE are effectively read only 0.
+                self.mstatus &= !(1 << 37);
+                self.mstatus &= !(1 << 36);
+                self.mstatus &= !(1 << 6);
+                // TVM is read only 0 if S is not implemented
+                self.mstatus &= !(1 << 20);
+                // TW is read only 0 if there are no modes less than M implemented
+                self.mstatus &= !(1 << 21);
+                // TSR is read only 0 if S is not implemented
+                self.mstatus &= !(1 << 22);
+                // For simplicity FS will always say dirty
+                self.mstatus |= 3 << 13;
+                // VS and XS are read only zero as neither V nor X are implemented
+                self.mstatus &= !(3 << 9);
+                self.mstatus &= !(3 << 15);
+            }
+            // mip
+            0x344 => {
+                // For us everything in the bottom 16 bites of mip is read only
+                self.mip = val & !0xffff;
+            }
+            // mie
+            0x304 => {
+                // Zero out the zero bits of mie.
+                self.mie = val & !0xd555;
+                // SEIP, STIP and SSIP are read only zero since S is not implemented
+                self.mie &= !(1 << 1);
+                self.mie &= !(1 << 5);
+                self.mie &= !(1 << 9);
+                // LCOFIE is read only zero since Sscofpmf is not implemented
+                self.mie &= !(1 << 13);
+            }
+            0xB00 => self.mcycle = val,            // mcycle
+            0xB02 => self.minstret = val,          // minstret
+            0x306 => self.mcounteren = val as u32, // mcounteren
+            0x340 => self.mscratch = val,          // mscratch
+            0x341 => self.mepc = val,              // mepc
+            0x342 => self.mcause = val,            // mcause
+            0x343 => self.mtval = val,             // mtval
+            0x30A => self.menvcfg = val,           // menvcfg TODO
+            0x747 => self.mseccfg = val,           // mseccfg TODO?
+
             0x003 => self.fcsr = val as u32,
             _ => self.illegal_instruction(),
         }
@@ -112,6 +232,15 @@ impl Emulator {
                 std::process::exit(self.x[10] as i32)
             }
             _ => (), // unimplemented syscall
+        }
+    }
+
+    fn increment_counters(&mut self) {
+        if self.mcountinhibit & 1 == 0 {
+            self.mcycle += 1;
+        }
+        if self.mcountinhibit & 4 == 0 {
+            self.minstret += 1;
         }
     }
 
@@ -161,8 +290,7 @@ impl Emulator {
                     0b111 => {
                         let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
                         let addr = self.x[rs1] as usize + offset as usize;
-                        self.memory
-                            .write_bytes(addr, &(self.x[rs2]).to_le_bytes());
+                        self.memory.write_bytes(addr, &(self.x[rs2]).to_le_bytes());
                     }
                     // C.ADDI4SPN
                     0b000 => {
@@ -301,23 +429,18 @@ impl Emulator {
                                     // C.XOR
                                     0b001 => self.x[rd] &= self.x[rs2],
                                     // C.SUB
-                                    0b000 => {
-                                        self.x[rd] =
-                                            self.x[rd].wrapping_sub(self.x[rs2])
-                                    }
+                                    0b000 => self.x[rd] = self.x[rd].wrapping_sub(self.x[rs2]),
                                     // C.ADDW
                                     0b101 => {
-                                        self.x[rd] =
-                                            self.x[rd].wrapping_add(self.x[rs2]) as i32
-                                                as i64
-                                                as u64
+                                        self.x[rd] = self.x[rd].wrapping_add(self.x[rs2]) as i32
+                                            as i64
+                                            as u64
                                     }
                                     // C.SUBW
                                     0b100 => {
-                                        self.x[rd] =
-                                            self.x[rd].wrapping_sub(self.x[rs2]) as i32
-                                                as i64
-                                                as u64
+                                        self.x[rd] = self.x[rd].wrapping_sub(self.x[rs2]) as i32
+                                            as i64
+                                            as u64
                                     }
                                     _ => self.illegal_instruction(),
                                 }
@@ -417,6 +540,8 @@ impl Emulator {
         }
 
         self.pc = self.pc.wrapping_add(2);
+
+        self.increment_counters();
 
         true
     }
@@ -540,13 +665,9 @@ impl Emulator {
             0b0110011 => {
                 match (funct3, funct7) {
                     // ADD
-                    (0b000, 0b0000000) => {
-                        self.x[rd] = self.x[rs1].wrapping_add(self.x[rs2])
-                    }
+                    (0b000, 0b0000000) => self.x[rd] = self.x[rs1].wrapping_add(self.x[rs2]),
                     // SUB
-                    (0b000, 0b0100000) => {
-                        self.x[rd] = self.x[rs1].wrapping_sub(self.x[rs2])
-                    }
+                    (0b000, 0b0100000) => self.x[rd] = self.x[rs1].wrapping_sub(self.x[rs2]),
                     // SLT
                     (0b010, 0b0000000) => {
                         self.x[rd] = if (self.x[rs1] as i64) < (self.x[rs2] as i64) {
@@ -557,11 +678,7 @@ impl Emulator {
                     }
                     // SLTU
                     (0b011, 0b0000000) => {
-                        self.x[rd] = if self.x[rs1] < self.x[rs2] {
-                            1
-                        } else {
-                            0
-                        }
+                        self.x[rd] = if self.x[rs1] < self.x[rs2] { 1 } else { 0 }
                     }
                     // XOR
                     (0b100, 0b0000000) => self.x[rd] = self.x[rs1] ^ self.x[rs2],
@@ -570,21 +687,15 @@ impl Emulator {
                     // AND
                     (0b111, 0b0000000) => self.x[rd] = self.x[rs1] & self.x[rs2],
                     // SLL
-                    (0b001, 0b0000000) => {
-                        self.x[rd] = self.x[rs1] << (self.x[rs2] & 0x3f)
-                    }
+                    (0b001, 0b0000000) => self.x[rd] = self.x[rs1] << (self.x[rs2] & 0x3f),
                     // SRL
-                    (0b101, 0b0000000) => {
-                        self.x[rd] = self.x[rs1] >> (self.x[rs2] & 0x3f)
-                    }
+                    (0b101, 0b0000000) => self.x[rd] = self.x[rs1] >> (self.x[rs2] & 0x3f),
                     // SRA
                     (0b101, 0b0100000) => {
                         self.x[rd] = (self.x[rs1] as i64 >> (self.x[rs2] & 0x3f)) as u64
                     }
                     // MUL
-                    (0b000, 0b0000001) => {
-                        self.x[rd] = self.x[rs1].wrapping_mul(self.x[rs2])
-                    }
+                    (0b000, 0b0000001) => self.x[rd] = self.x[rs1].wrapping_mul(self.x[rs2]),
                     // MULH
                     (0b001, 0b0000001) => {
                         self.x[rd] = ((self.x[rs1] as i64 as i128)
@@ -593,9 +704,8 @@ impl Emulator {
                     }
                     // MULHU
                     (0b011, 0b0000001) => {
-                        self.x[rd] = ((self.x[rs1] as u128)
-                            .wrapping_mul(self.x[rs2] as u128)
-                            >> 64) as u64
+                        self.x[rd] =
+                            ((self.x[rs1] as u128).wrapping_mul(self.x[rs2] as u128) >> 64) as u64
                     }
                     // MULHSU
                     (0b010, 0b0000001) => {
@@ -605,22 +715,16 @@ impl Emulator {
                     }
                     // DIV
                     (0b100, 0b0000001) => {
-                        self.x[rd] =
-                            (self.x[rs1] as i64).wrapping_div(self.x[rs2] as i64) as u64
+                        self.x[rd] = (self.x[rs1] as i64).wrapping_div(self.x[rs2] as i64) as u64
                     }
                     // DIVU
-                    (0b101, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1]).wrapping_div(self.x[rs2])
-                    }
+                    (0b101, 0b0000001) => self.x[rd] = (self.x[rs1]).wrapping_div(self.x[rs2]),
                     // REM
                     (0b110, 0b0000001) => {
-                        self.x[rd] =
-                            (self.x[rs1] as i64).wrapping_rem(self.x[rs2] as i64) as u64
+                        self.x[rd] = (self.x[rs1] as i64).wrapping_rem(self.x[rs2] as i64) as u64
                     }
                     // REMU
-                    (0b111, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1]).wrapping_rem(self.x[rs2])
-                    }
+                    (0b111, 0b0000001) => self.x[rd] = (self.x[rs1]).wrapping_rem(self.x[rs2]),
                     _ => self.illegal_instruction(),
                 }
             }
@@ -629,58 +733,49 @@ impl Emulator {
                 match (funct3, funct7) {
                     // ADDW
                     (0b000, 0b0000000) => {
-                        self.x[rd] =
-                            (self.x[rs1] as u32).wrapping_add(self.x[rs2] as u32) as u64
+                        self.x[rd] = (self.x[rs1] as u32).wrapping_add(self.x[rs2] as u32) as u64
                     }
                     // SUBW
                     (0b000, 0b0100000) => {
-                        self.x[rd] =
-                            (self.x[rs1] as u32).wrapping_sub(self.x[rs2] as u32) as u64
+                        self.x[rd] = (self.x[rs1] as u32).wrapping_sub(self.x[rs2] as u32) as u64
                     }
                     // SLLW
                     (0b001, 0b0000000) => {
-                        self.x[rd] =
-                            ((self.x[rs1] as u32) << (self.x[rs2] as u32 & 0x1f)) as u64
+                        self.x[rd] = ((self.x[rs1] as u32) << (self.x[rs2] as u32 & 0x1f)) as u64
                     }
                     // SRLW
                     (0b101, 0b0000000) => {
-                        self.x[rd] =
-                            ((self.x[rs1] as u32) >> (self.x[rs2] as u32 & 0x1f)) as u64
+                        self.x[rd] = ((self.x[rs1] as u32) >> (self.x[rs2] as u32 & 0x1f)) as u64
                     }
                     // SRAW
                     (0b101, 0b0100000) => {
-                        self.x[rd] = (self.x[rs1] as i32 >> (self.x[rs2] as u32 & 0x1f))
-                            as i64 as u64
+                        self.x[rd] =
+                            (self.x[rs1] as i32 >> (self.x[rs2] as u32 & 0x1f)) as i64 as u64
                     }
                     // MULW
                     (0b000, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1] as i32)
-                            .wrapping_mul(self.x[rs2] as i32)
-                            as i64 as u64
+                        self.x[rd] =
+                            (self.x[rs1] as i32).wrapping_mul(self.x[rs2] as i32) as i64 as u64
                     }
                     // DIVW
                     (0b100, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1] as i32)
-                            .wrapping_div(self.x[rs2] as i32)
-                            as i64 as u64
+                        self.x[rd] =
+                            (self.x[rs1] as i32).wrapping_div(self.x[rs2] as i32) as i64 as u64
                     }
                     // DIVUW
                     (0b101, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1] as u32)
-                            .wrapping_div(self.x[rs2] as u32)
-                            as i32 as i64 as u64
+                        self.x[rd] = (self.x[rs1] as u32).wrapping_div(self.x[rs2] as u32) as i32
+                            as i64 as u64
                     }
                     // REMW
                     (0b110, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1] as i32)
-                            .wrapping_rem(self.x[rs2] as i32)
-                            as i64 as u64
+                        self.x[rd] =
+                            (self.x[rs1] as i32).wrapping_rem(self.x[rs2] as i32) as i64 as u64
                     }
                     // REMUW
                     (0b111, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1] as u32)
-                            .wrapping_rem(self.x[rs2] as u32)
-                            as i32 as i64 as u64
+                        self.x[rd] = (self.x[rs1] as u32).wrapping_rem(self.x[rs2] as u32) as i32
+                            as i64 as u64
                     }
                     _ => self.illegal_instruction(),
                 }
@@ -767,31 +862,22 @@ impl Emulator {
                 match funct3 {
                     // LB
                     0b000 => {
-                        self.x[rd] =
-                            i8::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64
+                        self.x[rd] = i8::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64
                     }
                     // LH
                     0b001 => {
-                        self.x[rd] =
-                            i16::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64
+                        self.x[rd] = i16::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64
                     }
                     // LW
                     0b010 => {
-                        self.x[rd] =
-                            i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64
+                        self.x[rd] = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64
                     }
                     // LBU
-                    0b100 => {
-                        self.x[rd] = u8::from_le_bytes(self.memory.read_bytes(addr)) as u64
-                    }
+                    0b100 => self.x[rd] = u8::from_le_bytes(self.memory.read_bytes(addr)) as u64,
                     // LHU
-                    0b101 => {
-                        self.x[rd] = u16::from_le_bytes(self.memory.read_bytes(addr)) as u64
-                    }
+                    0b101 => self.x[rd] = u16::from_le_bytes(self.memory.read_bytes(addr)) as u64,
                     // LWU
-                    0b110 => {
-                        self.x[rd] = u32::from_le_bytes(self.memory.read_bytes(addr)) as u64
-                    }
+                    0b110 => self.x[rd] = u32::from_le_bytes(self.memory.read_bytes(addr)) as u64,
                     // LD
                     0b011 => self.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr)),
                     _ => self.illegal_instruction(),
@@ -815,9 +901,7 @@ impl Emulator {
                         .memory
                         .write_bytes(addr, &(self.x[rs2] as u32).to_le_bytes()),
                     // SD
-                    0b011 => self
-                        .memory
-                        .write_bytes(addr, &self.x[rs2].to_le_bytes()),
+                    0b011 => self.memory.write_bytes(addr, &self.x[rs2].to_le_bytes()),
                     _ => self.illegal_instruction(),
                 }
             }
@@ -882,8 +966,7 @@ impl Emulator {
                         if rs2 != 0 {
                             self.illegal_instruction();
                         }
-                        self.x[rd] =
-                            i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+                        self.x[rd] = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
 
                         self.reservation.store(addr | 0b01, Ordering::Relaxed);
                     }
@@ -1052,7 +1135,6 @@ impl Emulator {
             // - Set csr flags on illegal instruction etc
             // - Canonicalize NaNs (whatever that means)
             // - Actually represent 32 bit floats properly (lower bits of 64 bit NaN)
-
             0b0000111 => {
                 let offset = (instruction >> 20 & 0xfff) as usize;
                 let addr = (self.x[rs1] as usize).wrapping_add(offset);
@@ -1080,8 +1162,7 @@ impl Emulator {
                     }
                     // FSD
                     0b011 => {
-                        self.memory
-                            .write_bytes(addr, &(self.f[rs1]).to_le_bytes());
+                        self.memory.write_bytes(addr, &(self.f[rs1]).to_le_bytes());
                     }
                     _ => self.illegal_instruction(),
                 }
@@ -1124,9 +1205,7 @@ impl Emulator {
                     // FSQRT.D
                     (0b00101, 0b01, _, 0) => self.f[rd] = a.sqrt(),
                     // FCVT.W.S
-                    (0b11000, 0b00, _, 0) => {
-                        self.x[rd] = self.f[rs1] as f32 as i32 as i64 as u64
-                    }
+                    (0b11000, 0b00, _, 0) => self.x[rd] = self.f[rs1] as f32 as i32 as i64 as u64,
                     // FCVT.L.S
                     (0b11000, 0b00, _, 1) => self.x[rd] = self.f[rs1] as f32 as i64 as u64,
                     // FCVT.WU.S
@@ -1176,13 +1255,9 @@ impl Emulator {
                     // FSGNJX.D
                     (0b00100, 0b01, 2, _) => self.f[rd] = a * -b.signum(),
                     // FMV.X.W
-                    (0b11100, 0b00, 0, 0) => {
-                        self.x[rd] = (self.f[rs1] as f32).to_bits() as u64
-                    }
+                    (0b11100, 0b00, 0, 0) => self.x[rd] = (self.f[rs1] as f32).to_bits() as u64,
                     // FMV.W.X
-                    (0b11110, 0b00, 0, 0) => {
-                        self.f[rd] = f32::from_bits(self.x[rs1] as u32) as f64
-                    }
+                    (0b11110, 0b00, 0, 0) => self.f[rd] = f32::from_bits(self.x[rs1] as u32) as f64,
                     // FMV.X.D
                     (0b11100, 0b01, 0, 0) => self.x[rd] = self.f[rs1].to_bits(),
                     // FMV.D.X
@@ -1298,6 +1373,8 @@ impl Emulator {
 
             _ => self.illegal_instruction(),
         }
+
+        self.increment_counters();
 
         self.pc = self.pc.wrapping_add(4);
     }
