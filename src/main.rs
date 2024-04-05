@@ -26,7 +26,6 @@ impl Memory {
     }
 
     fn write_bytes(&mut self, mut addr: usize, bytes: &[u8]) {
-        //println!("{bytes:?}");
         for &b in bytes {
             self.bytes[addr] = b;
             addr += 1;
@@ -233,7 +232,7 @@ impl Emulator {
             match trap {
                 11 => {
                     println!("Stage {}", self.x[10] / 2);
-                },
+                }
                 _ => (),
             }
         }
@@ -591,7 +590,7 @@ impl Emulator {
                 let iimm = uimm as i64;
                 match funct3 {
                     // ADDI
-                    0b000 => self.x[rd] = (iinp + iimm) as u64,
+                    0b000 => self.x[rd] = (iinp.wrapping_add(iimm)) as u64,
                     // SLTI
                     0b010 => self.x[rd] = if iinp < iimm { 1 } else { 0 },
                     // SLTIU
@@ -632,32 +631,32 @@ impl Emulator {
                 match funct3 {
                     // ADDIW
                     0b000 => {
-                        let imm = instruction as i32 >> 20 & 0xfff;
-                        self.x[rd] = (imm + iinp) as i64 as u64;
+                        let imm = instruction as i32 >> 20;
+                        self.x[rd] = (imm.wrapping_add(iinp)) as i64 as u64;
                     }
                     0b001 => {
-                        let upper = instruction >> 25 & 0x1f;
+                        let upper = instruction >> 25 & 0x7f;
                         match upper {
                             // SLLIW
-                            0b000000 => {
+                            0b0000000 => {
                                 let shamt = instruction >> 20 & 0x1f;
-                                self.x[rd] = (uinp << shamt) as u64;
+                                self.x[rd] = (uinp << shamt) as i32 as i64 as u64;
                             }
                             _ => self.illegal_instruction(),
                         }
                     }
                     0b101 => {
-                        let upper = instruction >> 25 & 0x1f;
+                        let upper = instruction >> 25 & 0x7f;
                         match upper {
                             // SRLIW
-                            0b000000 => {
+                            0b0000000 => {
                                 let shamt = instruction >> 20 & 0x1f;
-                                self.x[rd] = (uinp >> shamt) as u64;
+                                self.x[rd] = (uinp >> shamt) as i32 as i64 as u64;
                             }
                             // SRAIW
-                            0b010000 => {
+                            0b0100000 => {
                                 let shamt = instruction >> 20 & 0x1f;
-                                self.x[rd] = (iinp >> shamt) as u64;
+                                self.x[rd] = (iinp >> shamt) as i64 as u64;
                             }
                             _ => self.illegal_instruction(),
                         }
@@ -669,13 +668,13 @@ impl Emulator {
             // LUI
             0b0110111 => {
                 let imm = instruction & 0xfffff << 12;
-                self.x[rd] = imm as u64;
+                self.x[rd] = imm as i32 as i64 as u64;
             }
 
             // AUIPC
             0b0010111 => {
                 let imm = instruction & 0xfffff << 12;
-                self.x[rd] = imm as u64 + self.pc;
+                self.x[rd] = (imm as i32 as i64 as u64).wrapping_add(self.pc);
             }
 
             // Register instructions
@@ -750,19 +749,23 @@ impl Emulator {
                 match (funct3, funct7) {
                     // ADDW
                     (0b000, 0b0000000) => {
-                        self.x[rd] = (self.x[rs1] as u32).wrapping_add(self.x[rs2] as u32) as u64
+                        self.x[rd] =
+                            (self.x[rs1] as i32).wrapping_add(self.x[rs2] as i32) as i64 as u64
                     }
                     // SUBW
                     (0b000, 0b0100000) => {
-                        self.x[rd] = (self.x[rs1] as u32).wrapping_sub(self.x[rs2] as u32) as u64
+                        self.x[rd] =
+                            (self.x[rs1] as i32).wrapping_sub(self.x[rs2] as i32) as i64 as u64
                     }
                     // SLLW
                     (0b001, 0b0000000) => {
-                        self.x[rd] = ((self.x[rs1] as u32) << (self.x[rs2] as u32 & 0x1f)) as u64
+                        self.x[rd] = ((self.x[rs1] as u32) << (self.x[rs2] as u32 & 0x1f)) as i32
+                            as i64 as u64
                     }
                     // SRLW
                     (0b101, 0b0000000) => {
-                        self.x[rd] = ((self.x[rs1] as u32) >> (self.x[rs2] as u32 & 0x1f)) as u64
+                        self.x[rd] = ((self.x[rs1] as u32) >> (self.x[rs2] as u32 & 0x1f)) as i32
+                            as i64 as u64
                     }
                     // SRAW
                     (0b101, 0b0100000) => {
@@ -813,9 +816,10 @@ impl Emulator {
             0b1100111 => {
                 // JALR
                 if funct3 == 0b000 {
-                    let offset = (instruction >> 20 & 0xfff) as u64;
+                    let offset = instruction >> 20 & 0xfff;
+                    let offset = ((offset as i32) << 20 >> 20) as i64 as u64;
                     let tmp = self.x[rs1];
-                    self.x[rd] = self.pc;
+                    self.x[rd] = self.pc.wrapping_add(4);
                     self.pc = tmp.wrapping_add(offset).wrapping_sub(4);
                 } else {
                     self.illegal_instruction();
@@ -871,7 +875,7 @@ impl Emulator {
 
             // Load and Store
             0b0000011 => {
-                let imm = (instruction as i32 >> 20 & 0xfff) as u64;
+                let imm = (instruction as i32 >> 20) as u64;
                 let addr = self.x[rs1].wrapping_add(imm) as usize;
                 match funct3 {
                     // LB
@@ -898,8 +902,8 @@ impl Emulator {
                 }
             }
             0b0100011 => {
-                let imm =
-                    (instruction as i64 >> 7 & 0x1f | instruction as i64 >> 20 & 0xfe0) as u64;
+                let imm = instruction >> 7 & 0x1f | instruction >> 20 & 0xfe0;
+                let imm = ((imm as i32) << 20 >> 20) as i64 as u64;
                 let addr = self.x[rs1].wrapping_add(imm) as usize;
                 match funct3 {
                     // SB
@@ -944,7 +948,7 @@ impl Emulator {
                         }
                         // MRET
                         0b00110000001000000000000001110011 => {
-                            self.pc = self.mepc;
+                            self.pc = self.mepc.wrapping_sub(4);
                         }
                         _ => self.illegal_instruction(),
                     }
@@ -1415,7 +1419,17 @@ fn main() {
     let mut computer = Emulator::new(128 * 1024 * 1024);
 
     //computer.load_binary("a.out", 0x1000).unwrap();
-    computer.load_binary("../riscv-tests/isa/rv64ui-p-add", 0x1000).unwrap();
+    computer
+        .load_binary("../riscv-tests/isa/rv64um-p-xori", 0x1000)
+        .unwrap();
+
+    // TODO
+    // - M
+    // - A
+    // - C
+    // - F
+    // - D
+    // - Zicsr
 
     loop {
         computer.run_instruction();
