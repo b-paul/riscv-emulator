@@ -679,123 +679,136 @@ impl Emulator {
 
             // Register instructions
             0b0110011 => {
+                let a = self.x[rs1];
+                let b = self.x[rs2];
                 match (funct3, funct7) {
                     // ADD
-                    (0b000, 0b0000000) => self.x[rd] = self.x[rs1].wrapping_add(self.x[rs2]),
+                    (0b000, 0b0000000) => self.x[rd] = a.wrapping_add(b),
                     // SUB
-                    (0b000, 0b0100000) => self.x[rd] = self.x[rs1].wrapping_sub(self.x[rs2]),
+                    (0b000, 0b0100000) => self.x[rd] = a.wrapping_sub(b),
                     // SLT
-                    (0b010, 0b0000000) => {
-                        self.x[rd] = if (self.x[rs1] as i64) < (self.x[rs2] as i64) {
-                            1
-                        } else {
-                            0
-                        }
-                    }
+                    (0b010, 0b0000000) => self.x[rd] = if (a as i64) < (b as i64) { 1 } else { 0 },
                     // SLTU
-                    (0b011, 0b0000000) => {
-                        self.x[rd] = if self.x[rs1] < self.x[rs2] { 1 } else { 0 }
-                    }
+                    (0b011, 0b0000000) => self.x[rd] = if a < b { 1 } else { 0 },
                     // XOR
-                    (0b100, 0b0000000) => self.x[rd] = self.x[rs1] ^ self.x[rs2],
+                    (0b100, 0b0000000) => self.x[rd] = a ^ b,
                     // OR
-                    (0b110, 0b0000000) => self.x[rd] = self.x[rs1] | self.x[rs2],
+                    (0b110, 0b0000000) => self.x[rd] = a | b,
                     // AND
-                    (0b111, 0b0000000) => self.x[rd] = self.x[rs1] & self.x[rs2],
+                    (0b111, 0b0000000) => self.x[rd] = a & b,
                     // SLL
-                    (0b001, 0b0000000) => self.x[rd] = self.x[rs1] << (self.x[rs2] & 0x3f),
+                    (0b001, 0b0000000) => self.x[rd] = a << (b & 0x3f),
                     // SRL
-                    (0b101, 0b0000000) => self.x[rd] = self.x[rs1] >> (self.x[rs2] & 0x3f),
+                    (0b101, 0b0000000) => self.x[rd] = a >> (b & 0x3f),
                     // SRA
-                    (0b101, 0b0100000) => {
-                        self.x[rd] = (self.x[rs1] as i64 >> (self.x[rs2] & 0x3f)) as u64
-                    }
+                    (0b101, 0b0100000) => self.x[rd] = (a as i64 >> (b & 0x3f)) as u64,
                     // MUL
-                    (0b000, 0b0000001) => self.x[rd] = self.x[rs1].wrapping_mul(self.x[rs2]),
+                    (0b000, 0b0000001) => self.x[rd] = a.wrapping_mul(b),
                     // MULH
                     (0b001, 0b0000001) => {
-                        self.x[rd] = ((self.x[rs1] as i64 as i128)
-                            .wrapping_mul(self.x[rs2] as i64 as i128)
-                            >> 64) as u64
+                        self.x[rd] =
+                            ((a as i64 as i128).wrapping_mul(b as i64 as i128) >> 64) as u64
                     }
                     // MULHU
                     (0b011, 0b0000001) => {
-                        self.x[rd] =
-                            ((self.x[rs1] as u128).wrapping_mul(self.x[rs2] as u128) >> 64) as u64
+                        self.x[rd] = ((a as u128).wrapping_mul(b as u128) >> 64) as u64
                     }
                     // MULHSU
                     (0b010, 0b0000001) => {
-                        self.x[rd] = ((self.x[rs1] as i64 as i128)
-                            .wrapping_mul(self.x[rs2] as u128 as i128)
-                            >> 64) as u64
+                        self.x[rd] =
+                            ((a as i64 as i128).wrapping_mul(b as u128 as i128) >> 64) as u64
                     }
                     // DIV
                     (0b100, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1] as i64).wrapping_div(self.x[rs2] as i64) as u64
+                        self.x[rd] = if a as i64 == i64::MIN && b as i64 == -1 {
+                            a
+                        } else if b == 0 {
+                            u64::MAX
+                        } else {
+                            (a as i64).wrapping_div(b as i64) as u64
+                        }
                     }
                     // DIVU
-                    (0b101, 0b0000001) => self.x[rd] = (self.x[rs1]).wrapping_div(self.x[rs2]),
+                    (0b101, 0b0000001) => {
+                        self.x[rd] = if b == 0 {
+                            u64::MAX
+                        } else {
+                            (a).wrapping_div(b)
+                        }
+                    }
                     // REM
                     (0b110, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1] as i64).wrapping_rem(self.x[rs2] as i64) as u64
+                        self.x[rd] = if a as i64 == i64::MIN && b as i64 == -1 {
+                            0
+                        } else if b == 0 {
+                            a
+                        } else {
+                            (a as i64).wrapping_rem(b as i64) as u64
+                        }
                     }
                     // REMU
-                    (0b111, 0b0000001) => self.x[rd] = (self.x[rs1]).wrapping_rem(self.x[rs2]),
+                    (0b111, 0b0000001) => self.x[rd] = if b == 0 { a } else { a.wrapping_rem(b) },
                     _ => self.illegal_instruction(),
                 }
             }
 
             0b0111011 => {
+                let a = self.x[rs1] as u32;
+                let b = self.x[rs2] as u32;
                 match (funct3, funct7) {
                     // ADDW
                     (0b000, 0b0000000) => {
-                        self.x[rd] =
-                            (self.x[rs1] as i32).wrapping_add(self.x[rs2] as i32) as i64 as u64
+                        self.x[rd] = (a as i32).wrapping_add(b as i32) as i64 as u64
                     }
                     // SUBW
                     (0b000, 0b0100000) => {
-                        self.x[rd] =
-                            (self.x[rs1] as i32).wrapping_sub(self.x[rs2] as i32) as i64 as u64
+                        self.x[rd] = (a as i32).wrapping_sub(b as i32) as i64 as u64
                     }
                     // SLLW
-                    (0b001, 0b0000000) => {
-                        self.x[rd] = ((self.x[rs1] as u32) << (self.x[rs2] as u32 & 0x1f)) as i32
-                            as i64 as u64
-                    }
+                    (0b001, 0b0000000) => self.x[rd] = (a << (b & 0x1f)) as i32 as i64 as u64,
                     // SRLW
-                    (0b101, 0b0000000) => {
-                        self.x[rd] = ((self.x[rs1] as u32) >> (self.x[rs2] as u32 & 0x1f)) as i32
-                            as i64 as u64
-                    }
+                    (0b101, 0b0000000) => self.x[rd] = (a >> (b & 0x1f)) as i32 as i64 as u64,
                     // SRAW
-                    (0b101, 0b0100000) => {
-                        self.x[rd] =
-                            (self.x[rs1] as i32 >> (self.x[rs2] as u32 & 0x1f)) as i64 as u64
-                    }
+                    (0b101, 0b0100000) => self.x[rd] = (a as i32 >> (b & 0x1f)) as i64 as u64,
                     // MULW
                     (0b000, 0b0000001) => {
-                        self.x[rd] =
-                            (self.x[rs1] as i32).wrapping_mul(self.x[rs2] as i32) as i64 as u64
+                        self.x[rd] = (a as i32).wrapping_mul(b as i32) as i64 as u64
                     }
                     // DIVW
                     (0b100, 0b0000001) => {
-                        self.x[rd] =
-                            (self.x[rs1] as i32).wrapping_div(self.x[rs2] as i32) as i64 as u64
+                        self.x[rd] = if a as i32 == i32::MIN && b as i32 == -1 {
+                            i32::MIN as i64 as u64
+                        } else if b == 0 {
+                            u64::MAX
+                        } else {
+                            (a as i32).wrapping_div(b as i32) as i64 as u64
+                        }
                     }
                     // DIVUW
                     (0b101, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1] as u32).wrapping_div(self.x[rs2] as u32) as i32
-                            as i64 as u64
+                        self.x[rd] = if b == 0 {
+                            u64::MAX
+                        } else {
+                            a.wrapping_div(b as u32) as i32 as i64 as u64
+                        }
                     }
                     // REMW
                     (0b110, 0b0000001) => {
-                        self.x[rd] =
-                            (self.x[rs1] as i32).wrapping_rem(self.x[rs2] as i32) as i64 as u64
+                        self.x[rd] = if a as i32 == i32::MIN && b as i32 == -1 {
+                            0
+                        } else if b == 0 {
+                            a as i32 as i64 as u64
+                        } else {
+                            (a as i32).wrapping_rem(b as i32) as i64 as u64
+                        }
                     }
                     // REMUW
                     (0b111, 0b0000001) => {
-                        self.x[rd] = (self.x[rs1] as u32).wrapping_rem(self.x[rs2] as u32) as i32
-                            as i64 as u64
+                        self.x[rd] = if b == 0 {
+                            a as i32 as i64 as u64
+                        } else {
+                            a.wrapping_rem(b) as i32 as i64 as u64
+                        }
                     }
                     _ => self.illegal_instruction(),
                 }
@@ -1420,7 +1433,7 @@ fn main() {
 
     //computer.load_binary("a.out", 0x1000).unwrap();
     computer
-        .load_binary("../riscv-tests/isa/rv64um-p-xori", 0x1000)
+        .load_binary("../riscv-tests/isa/rv64um-p-remw", 0x1000)
         .unwrap();
 
     // TODO
