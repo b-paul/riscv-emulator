@@ -1149,7 +1149,7 @@ impl Emulator {
                     (0b11100, 0b010) => {
                         let inp = u32::from_le_bytes(self.memory.read_bytes(addr));
                         let out = inp.max(self.x[rs2] as u32).to_le_bytes();
-                        self.x[rd] = inp as u64;
+                        self.x[rd] = inp as i32 as i64 as u64;
                         self.memory.write_bytes(addr, &out);
                     }
                     // AMOMAXU.D
@@ -1163,7 +1163,7 @@ impl Emulator {
                     (0b11000, 0b010) => {
                         let inp = u32::from_le_bytes(self.memory.read_bytes(addr));
                         let out = inp.min(self.x[rs2] as u32).to_le_bytes();
-                        self.x[rd] = inp as u64;
+                        self.x[rd] = inp as i32 as i64 as u64;
                         self.memory.write_bytes(addr, &out);
                     }
                     // AMOMINU.D
@@ -1433,12 +1433,10 @@ fn main() {
 
     //computer.load_binary("a.out", 0x1000).unwrap();
     computer
-        .load_binary("../riscv-tests/isa/rv64um-p-remw", 0x1000)
+        .load_binary("../riscv-tests/isa/rv64ua-p-lrsc", 0x1000)
         .unwrap();
 
     // TODO
-    // - M
-    // - A
     // - C
     // - F
     // - D
