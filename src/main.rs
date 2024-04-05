@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct Memory {
@@ -26,6 +26,7 @@ impl Memory {
     }
 
     fn write_bytes(&mut self, mut addr: usize, bytes: &[u8]) {
+        //println!("{bytes:?}");
         for &b in bytes {
             self.bytes[addr] = b;
             addr += 1;
@@ -39,11 +40,14 @@ struct Emulator {
 
     x: [u64; 32],
 
+    trap: Option<u64>,
+
     f: [f64; 32],
     fcsr: u32,
 
     misa: u64,
     mstatus: u64,
+    mtvec: u64,
     mip: u64,
     mie: u64,
     mcycle: u64,
@@ -56,6 +60,8 @@ struct Emulator {
     mtval: u64,
     menvcfg: u64,
     mseccfg: u64,
+    _mtime: u64,
+    _mtimecmp: u64,
 
     pc: u64,
 
@@ -75,11 +81,14 @@ impl Emulator {
 
             x: [0; 32],
 
+            trap: None,
+
             f: [0.; 32],
             fcsr: 0,
 
             misa: 2 << 62 | 0b00000000000001000100101101,
             mstatus: 0,
+            mtvec: 0,
             mip: 0,
             mie: 0,
             mcycle: 0,
@@ -92,6 +101,8 @@ impl Emulator {
             mtval: 0,
             menvcfg: 0,
             mseccfg: 0,
+            _mtime: 0,
+            _mtimecmp: 0,
 
             pc: 0,
 
@@ -108,38 +119,41 @@ impl Emulator {
         Ok(())
     }
 
-    fn get_csr(&mut self, csr: u32, _read: bool) -> u64 {
+    fn get_csr(&mut self, csr: u32, _read: bool) -> Option<u64> {
         match csr {
             // Machine csrs
-            0x301 => self.misa,                 // misa
-            0xF11 => 0,                         // mvendorid
-            0xF12 => 0,                         // marchid
-            0xF13 => 0,                         // mimpid
-            0xF14 => 0,                         // mhartid
-            0x300 => self.mstatus,              // mstatus
-            0x305 => 0,                         // mtvec
-            0x344 => 0,                         // mip
-            0x304 => 0,                         // mie
-            0xB00 => self.mcycle,               // mcycle
-            0xB02 => self.minstret,             // minstret
-            0xB04..=0xB1F => 0,                 // mhpmcounterN (unimplemented)
-            0x323..=0x33F => 0,                 // mhpmeventN (unimplemented)
-            0x306 => self.mcounteren as u64,    // mcounteren (reread when implementing U or S)
-            0x320 => self.mcountinhibit as u64, // mcountinhibit
-            0x340 => self.mscratch,             // mscratch
-            0x341 => self.mepc,                 // mepc
-            0x342 => self.mcause,               // mcause
-            0x343 => self.mtval,                // mtval
-            0xF15 => 0,                         // mconfigptr
-            0x30A => self.menvcfg,              // menvcfg
-            0x747 => self.mseccfg,              // mseccfg
+            0x301 => Some(self.misa),                 // misa
+            0xF11 => Some(0),                         // mvendorid
+            0xF12 => Some(0),                         // marchid
+            0xF13 => Some(0),                         // mimpid
+            0xF14 => Some(0),                         // mhartid
+            0x300 => Some(self.mstatus),              // mstatus
+            0x305 => Some(self.mtvec),                // mtvec
+            0x344 => Some(0),                         // mip
+            0x304 => Some(0),                         // mie
+            0xB00 => Some(self.mcycle),               // mcycle
+            0xB02 => Some(self.minstret),             // minstret
+            0xB04..=0xB1F => Some(0),                 // mhpmcounterN (unimplemented)
+            0x323..=0x33F => Some(0),                 // mhpmeventN (unimplemented)
+            0x306 => Some(self.mcounteren as u64),    // mcounteren (check when implementing U or S)
+            0x320 => Some(self.mcountinhibit as u64), // mcountinhibit
+            0x340 => Some(self.mscratch),             // mscratch
+            0x341 => Some(self.mepc),                 // mepc
+            0x342 => Some(self.mcause),               // mcause
+            0x343 => Some(self.mtval),                // mtval
+            0xF15 => Some(0),                         // mconfigptr
+            0x30A => Some(self.menvcfg),              // menvcfg
+            0x747 => Some(self.mseccfg),              // mseccfg
 
-            0x003 => self.fcsr as u64,
-            _ => self.illegal_instruction(),
+            0x003 => Some(self.fcsr as u64),
+            _ => None,
         }
     }
 
-    fn set_csr(&mut self, csr: u32, val: u64, _write: bool) {
+    fn set_csr(&mut self, csr: u32, val: u64, write: bool) {
+        if !write {
+            return;
+        }
         match csr {
             // Machine csrs
 
@@ -177,6 +191,7 @@ impl Emulator {
                 self.mstatus &= !(3 << 9);
                 self.mstatus &= !(3 << 15);
             }
+            0x305 => self.mtvec = val & !3, // mtvec (we assume always direct)
             // mip
             0x344 => {
                 // For us everything in the bottom 16 bites of mip is read only
@@ -208,31 +223,33 @@ impl Emulator {
         }
     }
 
-    fn illegal_instruction(&mut self) -> ! {
-        panic!("Illegal instruction at {:#x}", self.pc);
+    fn handle_traps(&mut self) {
+        if let Some(trap) = self.trap {
+            self.mepc = self.pc;
+            self.mcause = trap;
+            self.pc = self.mtvec.wrapping_sub(4);
+            self.trap = None;
+
+            match trap {
+                11 => {
+                    println!("Stage {}", self.x[10] / 2);
+                },
+                _ => (),
+            }
+        }
     }
 
-    fn syscall(&mut self) {
-        match self.x[17] {
-            0x01 => {
-                // print
-                let mut i = self.x[10] as usize;
-                'print: loop {
-                    let [byte] = self.memory.read_bytes(i);
-                    if byte == 0 {
-                        break 'print;
-                    }
-                    i = (i + 1) % self.memory.size;
-                    print!("{}", byte as char);
-                    std::io::stdout().flush().unwrap();
-                }
-            }
-            0x04 => {
-                // exit
-                std::process::exit(self.x[10] as i32)
-            }
-            _ => (), // unimplemented syscall
+    fn set_mtrap(&mut self, cause: u64) {
+        self.trap = Some(cause);
+    }
+
+    fn illegal_instruction(&mut self) {
+        self.set_mtrap(2);
+        let mut instruction = u32::from_le_bytes(self.memory.read_bytes(self.pc as usize));
+        if instruction & 3 != 3 {
+            instruction &= 0xffff;
         }
+        self.mtval = instruction as u64;
     }
 
     fn increment_counters(&mut self) {
@@ -543,6 +560,8 @@ impl Emulator {
 
         self.increment_counters();
 
+        self.handle_traps();
+
         true
     }
 
@@ -562,8 +581,6 @@ impl Emulator {
         let funct3 = instruction >> 12 & 0x7;
         let funct7 = instruction >> 25 & 0x7f;
 
-        // We implement RV64I
-
         match opcode {
             // Immediate instructions
             0b0010011 => {
@@ -576,16 +593,16 @@ impl Emulator {
                     // ADDI
                     0b000 => self.x[rd] = (iinp + iimm) as u64,
                     // SLTI
-                    0b001 => self.x[rd] = if iinp < iimm { 1 } else { 0 },
+                    0b010 => self.x[rd] = if iinp < iimm { 1 } else { 0 },
                     // SLTIU
-                    0b010 => self.x[rd] = if uinp < uimm { 1 } else { 0 },
+                    0b011 => self.x[rd] = if uinp < uimm { 1 } else { 0 },
                     // XORI
-                    0b011 => self.x[rd] = uimm ^ uinp,
+                    0b100 => self.x[rd] = uimm ^ uinp,
                     // ORI
-                    0b100 => self.x[rd] = uimm | uinp,
+                    0b110 => self.x[rd] = uimm | uinp,
                     // ANDI
-                    0b101 => self.x[rd] = uimm & uinp,
-                    0b110 => {
+                    0b111 => self.x[rd] = uimm & uinp,
+                    0b001 => {
                         let upper = instruction >> 26 & 0x3f;
                         let shamt = instruction >> 20 & 0x3f;
                         match upper {
@@ -594,7 +611,7 @@ impl Emulator {
                             _ => self.illegal_instruction(),
                         }
                     }
-                    0b111 => {
+                    0b101 => {
                         let upper = instruction >> 26 & 0x3f;
                         let shamt = instruction >> 20 & 0x3f;
                         match upper {
@@ -610,13 +627,13 @@ impl Emulator {
             }
 
             0b0011011 => {
-                let uinp = (self.x[rs1] & 0xffffffff) as u32;
+                let uinp = self.x[rs1] as u32;
                 let iinp = uinp as i32;
                 match funct3 {
                     // ADDIW
                     0b000 => {
                         let imm = instruction as i32 >> 20 & 0xfff;
-                        self.x[rd] = (imm + iinp) as i64 as u64
+                        self.x[rd] = (imm + iinp) as i64 as u64;
                     }
                     0b001 => {
                         let upper = instruction >> 25 & 0x1f;
@@ -785,13 +802,11 @@ impl Emulator {
 
             // JAL
             0b1101111 => {
-                // i don't trust this TODO double check
                 let offset = instruction >> 21 & 0x3ff
                     | instruction >> 10 & 0x400
                     | instruction >> 1 & 0x7f800
                     | instruction >> 12 & 0x80000;
-                let offset = ((offset as i32) << 12 >> 12) as i64;
-                let offset = offset * 2;
+                let offset = ((offset as i32) << 12 >> 11) as i64;
                 self.x[rd] = self.pc.wrapping_add(4);
                 self.pc = self.pc.wrapping_add(offset as u64).wrapping_sub(4);
             }
@@ -807,13 +822,12 @@ impl Emulator {
                 }
             }
             0b1100011 => {
-                // i don't trust this TODO double check
                 let offset = instruction >> 8 & 0xf
-                    | instruction >> 21 & 0x1f0
-                    | instruction << 2 & 0x200
-                    | instruction >> 20 & 0x400;
-                let offset = ((offset as i32) << 20 >> 20) as u64;
-                let offset = (offset * 2).wrapping_sub(4096);
+                    | instruction >> 21 & 0x3f0
+                    | instruction << 3 & 0x400
+                    | instruction >> 20 & 0x800;
+                let offset = ((offset as i32) << 20 >> 19) as u64;
+                let offset = offset;
                 match funct3 {
                     // BEQ
                     0b000 => {
@@ -910,8 +924,8 @@ impl Emulator {
 
             // FENCE
             0b0001111 => {
-                todo!("FENCE"); // i dont think anything needs to be done here until some sort of
-                                // instruction reordering is implemented
+                // i dont think anything needs to be done here until some sort of instruction
+                // reordering is implemented
             }
 
             // System
@@ -919,10 +933,18 @@ impl Emulator {
                 if funct3 == 0 {
                     match instruction {
                         // ECALL
-                        0b00000000000000000000000001110011 => self.syscall(),
+                        0b00000000000000000000000001110011 => {
+                            self.set_mtrap(11); // Environment call from M mode
+                            self.minstret = self.minstret.wrapping_sub(1);
+                        }
                         // EBREAK
                         0b00000000000100000000000001110011 => {
-                            todo!("EBREAK");
+                            self.set_mtrap(3); // Breakpoint
+                            self.minstret = self.minstret.wrapping_sub(1);
+                        }
+                        // MRET
+                        0b00110000001000000000000001110011 => {
+                            self.pc = self.mepc;
                         }
                         _ => self.illegal_instruction(),
                     }
@@ -932,23 +954,30 @@ impl Emulator {
                     let uimm = rs1 as u64;
                     let read = !(funct3 & 3 == 0b01 && rs1 == 0);
                     let write = !(funct3 & 2 == 0b10 && rs1 == 0);
-                    let csr_val = self.get_csr(csr, read);
-                    let new_val = match funct3 {
-                        // CSRRW
-                        0b001 => self.x[rs1],
-                        // CSRRS
-                        0b010 => csr_val | self.x[rs1],
-                        // CSRRC
-                        0b011 => csr_val & !self.x[rs1],
-                        // CSRRWI
-                        0b101 => uimm,
-                        // CSRRSI
-                        0b110 => csr_val | uimm,
-                        // CSRRCI
-                        0b111 => csr_val & !uimm,
-                        _ => self.illegal_instruction(),
-                    };
-                    self.set_csr(csr, new_val, write);
+                    if let Some(csr_val) = self.get_csr(csr, read) {
+                        if let Some(new_val) = match funct3 {
+                            // CSRRW
+                            0b001 => Some(self.x[rs1]),
+                            // CSRRS
+                            0b010 => Some(csr_val | self.x[rs1]),
+                            // CSRRC
+                            0b011 => Some(csr_val & !self.x[rs1]),
+                            // CSRRWI
+                            0b101 => Some(uimm),
+                            // CSRRSI
+                            0b110 => Some(csr_val | uimm),
+                            // CSRRCI
+                            0b111 => Some(csr_val & !uimm),
+                            _ => None,
+                        } {
+                            self.set_csr(csr, new_val, write);
+                            self.x[rd] = csr_val;
+                        } else {
+                            self.illegal_instruction();
+                        }
+                    } else {
+                        self.illegal_instruction();
+                    }
                 }
             }
 
@@ -1376,6 +1405,8 @@ impl Emulator {
 
         self.increment_counters();
 
+        self.handle_traps();
+
         self.pc = self.pc.wrapping_add(4);
     }
 }
@@ -1383,7 +1414,8 @@ impl Emulator {
 fn main() {
     let mut computer = Emulator::new(128 * 1024 * 1024);
 
-    computer.load_binary("a.out", 0x1000).unwrap();
+    //computer.load_binary("a.out", 0x1000).unwrap();
+    computer.load_binary("../riscv-tests/isa/rv64ui-p-add", 0x1000).unwrap();
 
     loop {
         computer.run_instruction();
