@@ -285,13 +285,19 @@ impl Emulator {
                             | instruction >> 7 & 0x38
                             | instruction << 1 & 0x40;
                         let addr = self.x[rs1] as usize + offset as usize;
-                        self.x[rd] = u32::from_le_bytes(self.memory.read_bytes(addr)) as u64;
+                        self.x[rd] = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
                     }
                     // C.LD
                     0b011 => {
                         let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
                         let addr = self.x[rs1] as usize + offset as usize;
                         self.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr));
+                    }
+                    // C.FLD
+                    0b001 => {
+                        let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
+                        let addr = self.x[rs1] as usize + offset as usize;
+                        self.f[rd] = f64::from_le_bytes(self.memory.read_bytes(addr));
                     }
                     // C.SW
                     0b110 => {
@@ -308,15 +314,20 @@ impl Emulator {
                         let addr = self.x[rs1] as usize + offset as usize;
                         self.memory.write_bytes(addr, &(self.x[rs2]).to_le_bytes());
                     }
+                    // C.FSD
+                    0b101 => {
+                        let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
+                        let addr = self.x[rs1] as usize + offset as usize;
+                        self.memory.write_bytes(addr, &(self.f[rs2]).to_le_bytes());
+                    }
                     // C.ADDI4SPN
                     0b000 => {
                         let rd = (instruction >> 2 & 0x7) as usize + 8;
                         let nzuimm = (instruction >> 4 & 0x4
                             | instruction >> 2 & 0x8
                             | instruction >> 7 & 0x30
-                            | instruction >> 1 & 0x3c) as u64;
-                        self.x[2] = self.x[2].wrapping_add(nzuimm);
-                        self.x[rd] = self.x[2];
+                            | instruction >> 1 & 0x3c0) as u64;
+                        self.x[rd] = self.x[2].wrapping_add(nzuimm);
                     }
                     _ => self.illegal_instruction(),
                 }
@@ -383,8 +394,9 @@ impl Emulator {
                                 >> 6) as i64 as u64;
                             if nzimm == 0 {
                                 self.illegal_instruction();
+                            } else {
+                                self.x[2] = self.x[2].wrapping_add(nzimm);
                             }
-                            self.x[2] = self.x[2].wrapping_add(nzimm);
                         } else {
                             // C.LUI
                             let imm = (((instruction as i32) << 10 & 0x1f000
@@ -430,20 +442,20 @@ impl Emulator {
                             }
                             // C.ANDI
                             0b10 => {
-                                let imm =
-                                    (instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as u64;
+                                let imm = instruction >> 2 & 0x1f | instruction >> 7 & 0x20;
+                                let imm = ((imm as i16) << 10 >> 10) as i64 as u64;
                                 self.x[rd] &= imm;
                             }
                             0b11 => {
                                 let rs2 = (instruction >> 2 & 0x7) as usize + 8;
-                                let funct3 = instruction >> 5 & 0x3 | instruction >> 8 & 0x4;
+                                let funct3 = instruction >> 5 & 0x3 | instruction >> 10 & 0x4;
                                 match funct3 {
                                     // C.AND
                                     0b011 => self.x[rd] &= self.x[rs2],
                                     // C.OR
                                     0b010 => self.x[rd] |= self.x[rs2],
                                     // C.XOR
-                                    0b001 => self.x[rd] &= self.x[rs2],
+                                    0b001 => self.x[rd] ^= self.x[rs2],
                                     // C.SUB
                                     0b000 => self.x[rd] = self.x[rd].wrapping_sub(self.x[rs2]),
                                     // C.ADDW
@@ -475,40 +487,66 @@ impl Emulator {
                         let rd = (instruction >> 7 & 0x1f) as usize;
                         if rd == 0 {
                             self.illegal_instruction();
+                        } else {
+                            let offset = instruction >> 2 & 0x1c
+                                | instruction >> 7 & 0x20
+                                | instruction << 4 & 0xc0;
+                            let offset = ((offset as i16) << 8 >> 8) as i64;
+                            let addr = self.x[2] as usize + offset as usize;
+                            self.x[rd] =
+                                i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
                         }
-                        let offset = instruction >> 2 & 0x1c
-                            | instruction >> 7 & 0x20
-                            | instruction << 4 & 0xc0;
-                        let addr = self.x[2] as usize + offset as usize;
-                        self.x[rd] = u32::from_le_bytes(self.memory.read_bytes(addr)) as u64;
                     }
                     // C.LDSP
                     0b011 => {
                         let rd = (instruction >> 7 & 0x1f) as usize;
                         if rd == 0 {
                             self.illegal_instruction();
+                        } else {
+                            let offset = instruction >> 2 & 0x18
+                                | instruction >> 7 & 0x20
+                                | instruction << 4 & 0x1c0;
+                            let offset = ((offset as i16) << 7 >> 7) as i64;
+                            let addr = self.x[2] as usize + offset as usize;
+                            self.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr));
                         }
+                    }
+                    // C.FLDSP
+                    0b001 => {
+                        let rd = (instruction >> 7 & 0x1f) as usize;
                         let offset = instruction >> 2 & 0x18
                             | instruction >> 7 & 0x20
                             | instruction << 4 & 0x1c0;
+                        let offset = ((offset as i16) << 7 >> 7) as i64;
                         let addr = self.x[2] as usize + offset as usize;
-                        self.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        self.f[rd] = f64::from_le_bytes(self.memory.read_bytes(addr));
                     }
                     // C.SWSP
                     0b110 => {
                         let rs2 = (instruction >> 2 & 0x1f) as usize;
-                        let offset = instruction >> 7 & 0x7c | instruction >> 1 & 0x180;
+                        let offset = instruction >> 7 & 0x3c | instruction >> 1 & 0xc0;
+                        let offset = ((offset as i16) << 8 >> 8) as i64;
                         let addr = self.x[2] as usize + offset as usize;
                         self.memory
-                            .write_bytes(addr, &u32::to_le_bytes(self.x[rs2] as u32));
+                            .write_bytes(addr, &(self.x[rs2] as u32).to_le_bytes());
                     }
                     // C.SDSP
                     0b111 => {
                         let rs2 = (instruction >> 2 & 0x1f) as usize;
-                        let offset = instruction >> 7 & 0x78 | instruction >> 1 & 0x380;
+                        let offset = instruction >> 7 & 0x38 | instruction >> 1 & 0x1c0;
+                        let offset = ((offset as i16) << 7 >> 7) as i64;
                         let addr = self.x[2] as usize + offset as usize;
                         self.memory
-                            .write_bytes(addr, &u64::to_le_bytes(self.x[rs2]));
+                            .write_bytes(addr, &(self.x[rs2]).to_le_bytes());
+                    }
+                    // C.FSDSP
+                    0b101 => {
+                        let rs2 = (instruction >> 2 & 0x1f) as usize;
+                        let offset = instruction >> 7 & 0x38 | instruction >> 1 & 0x1c0;
+                        let offset = ((offset as i16) << 7 >> 7) as i64;
+                        let addr = self.x[2] as usize + offset as usize;
+                        self.memory
+                            .write_bytes(addr, &(self.f[rs2]).to_le_bytes());
                     }
                     0b100 => {
                         let rs1 = (instruction >> 7 & 0x1f) as usize;
@@ -516,30 +554,31 @@ impl Emulator {
                         let funct4 = (instruction >> 12 & 0x1) == 1;
                         if rs1 == 0 {
                             self.illegal_instruction();
-                        }
-                        match (rs1 == 0, rs2 == 0, funct4) {
-                            // C.JR
-                            (false, true, false) => {
-                                self.pc = self.x[rs1].wrapping_sub(2);
+                        } else {
+                            match (rs1 == 0, rs2 == 0, funct4) {
+                                // C.JR
+                                (false, true, false) => {
+                                    self.pc = self.x[rs1].wrapping_sub(2);
+                                }
+                                // C.JALR
+                                (false, true, true) => {
+                                    let tmp = self.x[rs1];
+                                    self.x[1] = self.pc.wrapping_add(2);
+                                    self.pc = tmp.wrapping_sub(2);
+                                }
+                                // C.MV
+                                (false, false, false) => {
+                                    self.x[rs1] = self.x[rs2];
+                                }
+                                (false, false, true) => {
+                                    self.x[rs1] = self.x[rs1].wrapping_add(self.x[rs2]);
+                                }
+                                // C.EBREAK
+                                (true, true, true) => {
+                                    todo!("C.EBREAK")
+                                }
+                                _ => self.illegal_instruction(),
                             }
-                            // C.JALR
-                            (false, true, true) => {
-                                let tmp = self.x[rs1];
-                                self.x[1] = self.pc;
-                                self.pc = tmp.wrapping_sub(2);
-                            }
-                            // C.MV
-                            (false, false, false) => {
-                                self.x[rs1] = self.x[rs2];
-                            }
-                            (false, false, true) => {
-                                self.x[rs1] = self.x[rs1].wrapping_add(self.x[rs2]);
-                            }
-                            // C.EBREAK
-                            (true, true, true) => {
-                                todo!("C.EBREAK")
-                            }
-                            _ => self.illegal_instruction(),
                         }
                     }
                     // C.SLLI
@@ -1433,16 +1472,17 @@ fn main() {
 
     //computer.load_binary("a.out", 0x1000).unwrap();
     computer
-        .load_binary("../riscv-tests/isa/rv64ua-p-lrsc", 0x1000)
+        .load_binary("../riscv-tests/isa/rv64uc-p-rvc", 0x1000)
         .unwrap();
 
-    // TODO
-    // - C
+    // TODO testing for
     // - F
     // - D
     // - Zicsr
 
     loop {
+        //for _ in std::io::stdin().lines() {
+        //println!("{:x} {:?}", computer.pc, computer.x);
         computer.run_instruction();
     }
 }
