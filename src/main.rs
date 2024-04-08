@@ -1,38 +1,8 @@
 use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct Memory {
-    bytes: Box<[u8]>,
-    size: usize,
-}
-
-impl Memory {
-    fn new(size: usize) -> Memory {
-        Memory {
-            bytes: vec![0; size].into_boxed_slice(),
-            size,
-        }
-    }
-
-    // slightly confusing api with this being arrays and write_bytes being slices but whatever
-    fn read_bytes<const COUNT: usize>(&self, mut addr: usize) -> [u8; COUNT] {
-        let mut out = [0; COUNT];
-        for b in out.iter_mut() {
-            *b = self.bytes[addr];
-            addr += 1;
-            addr %= self.size;
-        }
-        out
-    }
-
-    fn write_bytes(&mut self, mut addr: usize, bytes: &[u8]) {
-        for &b in bytes {
-            self.bytes[addr] = b;
-            addr += 1;
-            addr %= self.size;
-        }
-    }
-}
+mod mem;
+use mem::Memory;
 
 struct Emulator {
     memory: Memory,
@@ -59,8 +29,8 @@ struct Emulator {
     mtval: u64,
     menvcfg: u64,
     mseccfg: u64,
-    _mtime: u64,
-    _mtimecmp: u64,
+    mtime: u64,
+    mtimecmp: u64,
 
     pc: u64,
 
@@ -100,8 +70,8 @@ impl Emulator {
             mtval: 0,
             menvcfg: 0,
             mseccfg: 0,
-            _mtime: 0,
-            _mtimecmp: 0,
+            mtime: 0,
+            mtimecmp: 0,
 
             pc: 0,
 
@@ -229,11 +199,8 @@ impl Emulator {
             self.pc = self.mtvec.wrapping_sub(4);
             self.trap = None;
 
-            match trap {
-                11 => {
-                    println!("Stage {}", self.x[10] / 2);
-                }
-                _ => (),
+            if trap == 11 {
+                println!("Stage {}", self.x[10] / 2);
             }
         }
     }
@@ -244,7 +211,7 @@ impl Emulator {
 
     fn illegal_instruction(&mut self) {
         self.set_mtrap(2);
-        let mut instruction = u32::from_le_bytes(self.memory.read_bytes(self.pc as usize));
+        let mut instruction = self.read_u32(self.pc as usize);
         if instruction & 3 != 3 {
             instruction &= 0xffff;
         }
@@ -261,7 +228,7 @@ impl Emulator {
     }
 
     fn try_16bit_instruction(&mut self) -> bool {
-        let instruction = u16::from_le_bytes(self.memory.read_bytes(self.pc as usize));
+        let instruction = self.read_u16(self.pc as usize);
         let opcode = instruction & 0x3;
         let funct3 = (instruction >> 13) & 0x7;
 
@@ -285,19 +252,19 @@ impl Emulator {
                             | instruction >> 7 & 0x38
                             | instruction << 1 & 0x40;
                         let addr = self.x[rs1] as usize + offset as usize;
-                        self.x[rd] = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+                        self.x[rd] = self.read_u32(addr) as i32 as i64 as u64;
                     }
                     // C.LD
                     0b011 => {
                         let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
                         let addr = self.x[rs1] as usize + offset as usize;
-                        self.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        self.x[rd] = self.read_u64(addr);
                     }
                     // C.FLD
                     0b001 => {
                         let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
                         let addr = self.x[rs1] as usize + offset as usize;
-                        self.f[rd] = f64::from_le_bytes(self.memory.read_bytes(addr));
+                        self.f[rd] = f64::from_bits(self.read_u64(addr));
                     }
                     // C.SW
                     0b110 => {
@@ -305,20 +272,19 @@ impl Emulator {
                             | instruction >> 7 & 0x38
                             | instruction << 1 & 0x40;
                         let addr = self.x[rs1] as usize + offset as usize;
-                        self.memory
-                            .write_bytes(addr, &(self.x[rs2] as u32).to_le_bytes());
+                        self.write_u32(addr, self.x[rs2] as u32);
                     }
                     // C.SD
                     0b111 => {
                         let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
                         let addr = self.x[rs1] as usize + offset as usize;
-                        self.memory.write_bytes(addr, &(self.x[rs2]).to_le_bytes());
+                        self.write_u64(addr, self.x[rs2]);
                     }
                     // C.FSD
                     0b101 => {
                         let offset = instruction >> 7 & 0x38 | instruction << 1 & 0xc0;
                         let addr = self.x[rs1] as usize + offset as usize;
-                        self.memory.write_bytes(addr, &(self.f[rs2]).to_le_bytes());
+                        self.write_u64(addr, self.f[rs2].to_bits());
                     }
                     // C.ADDI4SPN
                     0b000 => {
@@ -493,8 +459,7 @@ impl Emulator {
                                 | instruction << 4 & 0xc0;
                             let offset = ((offset as i16) << 8 >> 8) as i64;
                             let addr = self.x[2] as usize + offset as usize;
-                            self.x[rd] =
-                                i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+                            self.x[rd] = self.read_u32(addr) as i32 as i64 as u64;
                         }
                     }
                     // C.LDSP
@@ -508,7 +473,7 @@ impl Emulator {
                                 | instruction << 4 & 0x1c0;
                             let offset = ((offset as i16) << 7 >> 7) as i64;
                             let addr = self.x[2] as usize + offset as usize;
-                            self.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr));
+                            self.x[rd] = self.read_u64(addr);
                         }
                     }
                     // C.FLDSP
@@ -519,7 +484,7 @@ impl Emulator {
                             | instruction << 4 & 0x1c0;
                         let offset = ((offset as i16) << 7 >> 7) as i64;
                         let addr = self.x[2] as usize + offset as usize;
-                        self.f[rd] = f64::from_le_bytes(self.memory.read_bytes(addr));
+                        self.f[rd] = f64::from_bits(self.read_u64(addr));
                     }
                     // C.SWSP
                     0b110 => {
@@ -527,8 +492,7 @@ impl Emulator {
                         let offset = instruction >> 7 & 0x3c | instruction >> 1 & 0xc0;
                         let offset = ((offset as i16) << 8 >> 8) as i64;
                         let addr = self.x[2] as usize + offset as usize;
-                        self.memory
-                            .write_bytes(addr, &(self.x[rs2] as u32).to_le_bytes());
+                        self.write_u32(addr, self.x[rs2] as u32);
                     }
                     // C.SDSP
                     0b111 => {
@@ -536,8 +500,7 @@ impl Emulator {
                         let offset = instruction >> 7 & 0x38 | instruction >> 1 & 0x1c0;
                         let offset = ((offset as i16) << 7 >> 7) as i64;
                         let addr = self.x[2] as usize + offset as usize;
-                        self.memory
-                            .write_bytes(addr, &(self.x[rs2]).to_le_bytes());
+                        self.write_u64(addr, self.x[rs2]);
                     }
                     // C.FSDSP
                     0b101 => {
@@ -545,8 +508,7 @@ impl Emulator {
                         let offset = instruction >> 7 & 0x38 | instruction >> 1 & 0x1c0;
                         let offset = ((offset as i16) << 7 >> 7) as i64;
                         let addr = self.x[2] as usize + offset as usize;
-                        self.memory
-                            .write_bytes(addr, &(self.f[rs2]).to_le_bytes());
+                        self.write_u64(addr, self.f[rs2].to_bits());
                     }
                     0b100 => {
                         let rs1 = (instruction >> 7 & 0x1f) as usize;
@@ -611,7 +573,7 @@ impl Emulator {
             return;
         }
 
-        let instruction = u32::from_le_bytes(self.memory.read_bytes(self.pc as usize));
+        let instruction = self.read_u32(self.pc as usize);
         let opcode = instruction & 0x7f;
         let rd = (instruction >> 7 & 0x1f) as usize;
         let rs1 = (instruction >> 15 & 0x1f) as usize;
@@ -828,7 +790,7 @@ impl Emulator {
                         self.x[rd] = if b == 0 {
                             u64::MAX
                         } else {
-                            a.wrapping_div(b as u32) as i32 as i64 as u64
+                            a.wrapping_div(b) as i32 as i64 as u64
                         }
                     }
                     // REMW
@@ -883,7 +845,6 @@ impl Emulator {
                     | instruction << 3 & 0x400
                     | instruction >> 20 & 0x800;
                 let offset = ((offset as i32) << 20 >> 19) as u64;
-                let offset = offset;
                 match funct3 {
                     // BEQ
                     0b000 => {
@@ -931,25 +892,19 @@ impl Emulator {
                 let addr = self.x[rs1].wrapping_add(imm) as usize;
                 match funct3 {
                     // LB
-                    0b000 => {
-                        self.x[rd] = i8::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64
-                    }
+                    0b000 => self.x[rd] = self.read_u8(addr) as i8 as i64 as u64,
                     // LH
-                    0b001 => {
-                        self.x[rd] = i16::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64
-                    }
+                    0b001 => self.x[rd] = self.read_u16(addr) as i16 as i64 as u64,
                     // LW
-                    0b010 => {
-                        self.x[rd] = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64
-                    }
+                    0b010 => self.x[rd] = self.read_u32(addr) as i32 as i64 as u64,
                     // LBU
-                    0b100 => self.x[rd] = u8::from_le_bytes(self.memory.read_bytes(addr)) as u64,
+                    0b100 => self.x[rd] = self.read_u8(addr) as u64,
                     // LHU
-                    0b101 => self.x[rd] = u16::from_le_bytes(self.memory.read_bytes(addr)) as u64,
+                    0b101 => self.x[rd] = self.read_u16(addr) as u64,
                     // LWU
-                    0b110 => self.x[rd] = u32::from_le_bytes(self.memory.read_bytes(addr)) as u64,
+                    0b110 => self.x[rd] = self.read_u32(addr) as u64,
                     // LD
-                    0b011 => self.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr)),
+                    0b011 => self.x[rd] = self.read_u64(addr),
                     _ => self.illegal_instruction(),
                 }
             }
@@ -959,19 +914,13 @@ impl Emulator {
                 let addr = self.x[rs1].wrapping_add(imm) as usize;
                 match funct3 {
                     // SB
-                    0b000 => self
-                        .memory
-                        .write_bytes(addr, &(self.x[rs2] as u8).to_le_bytes()),
+                    0b000 => self.write_u8(addr, self.x[rs2] as u8),
                     // SH
-                    0b001 => self
-                        .memory
-                        .write_bytes(addr, &(self.x[rs2] as u16).to_le_bytes()),
+                    0b001 => self.write_u16(addr, self.x[rs2] as u16),
                     // SW
-                    0b010 => self
-                        .memory
-                        .write_bytes(addr, &(self.x[rs2] as u32).to_le_bytes()),
+                    0b010 => self.write_u32(addr, self.x[rs2] as u32),
                     // SD
-                    0b011 => self.memory.write_bytes(addr, &self.x[rs2].to_le_bytes()),
+                    0b011 => self.write_u64(addr, self.x[rs2]),
                     _ => self.illegal_instruction(),
                 }
             }
@@ -1051,7 +1000,7 @@ impl Emulator {
                         if rs2 != 0 {
                             self.illegal_instruction();
                         }
-                        self.x[rd] = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
+                        self.x[rd] = self.read_u32(addr) as i32 as i64 as u64;
 
                         self.reservation.store(addr | 0b01, Ordering::Relaxed);
                     }
@@ -1060,15 +1009,14 @@ impl Emulator {
                         if rs2 != 0 {
                             self.illegal_instruction();
                         }
-                        self.x[rd] = u64::from_le_bytes(self.memory.read_bytes(addr));
+                        self.x[rd] = self.read_u64(addr);
 
                         self.reservation.store(addr | 0b10, Ordering::Relaxed);
                     }
                     // SC.W
                     (0b00011, 0b010) => {
                         if self.reservation.load(Ordering::Acquire) == addr | 0b01 {
-                            let bytes = (self.x[rs2] as u32).to_le_bytes();
-                            self.memory.write_bytes(addr, &bytes);
+                            self.write_u32(addr, self.x[rs2] as u32);
                             self.reservation.store(0, Ordering::Release);
                             self.x[rd] = 0;
                         } else {
@@ -1078,8 +1026,7 @@ impl Emulator {
                     // SC.D
                     (0b00011, 0b011) => {
                         if self.reservation.load(Ordering::Acquire) == addr | 0b10 {
-                            let bytes = self.x[rs2].to_le_bytes();
-                            self.memory.write_bytes(addr, &bytes);
+                            self.write_u64(addr, self.x[rs2]);
                             self.reservation.store(0, Ordering::Release);
                             self.x[rd] = 0;
                         } else {
@@ -1088,129 +1035,129 @@ impl Emulator {
                     }
                     // AMOSWAP.W
                     (0b00001, 0b010) => {
-                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
-                        let out = (self.x[rs2] as u32).to_le_bytes();
+                        let inp = self.read_u32(addr) as i32 as i64 as u64;
+                        let out = self.x[rs2] as u32;
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u32(addr, out);
                     }
                     // AMOSWAP.D
                     (0b00001, 0b011) => {
-                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = self.x[rs2].to_le_bytes();
+                        let inp = self.read_u64(addr);
+                        let out = self.x[rs2];
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u64(addr, out);
                     }
                     // AMOADD.W
                     (0b00000, 0b010) => {
-                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
-                        let out = (inp.wrapping_add(self.x[rs2]) as u32).to_le_bytes();
+                        let inp = self.read_u32(addr) as i32 as i64 as u64;
+                        let out = inp.wrapping_add(self.x[rs2]) as u32;
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u32(addr, out);
                     }
                     // AMOADD.D
                     (0b00000, 0b011) => {
-                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = inp.wrapping_add(self.x[rs2]).to_le_bytes();
+                        let inp = self.read_u64(addr);
+                        let out = inp.wrapping_add(self.x[rs2]);
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u64(addr, out);
                     }
                     // AMOAND.W
                     (0b01100, 0b010) => {
-                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
-                        let out = ((inp & self.x[rs2]) as u32).to_le_bytes();
+                        let inp = self.read_u32(addr) as i32 as i64 as u64;
+                        let out = (inp & self.x[rs2]) as u32;
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u32(addr, out);
                     }
                     // AMOAND.D
                     (0b01100, 0b011) => {
-                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = (inp & self.x[rs2]).to_le_bytes();
+                        let inp = self.read_u64(addr);
+                        let out = inp & self.x[rs2];
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u64(addr, out);
                     }
                     // AMOOR.W
                     (0b01000, 0b010) => {
-                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
-                        let out = ((inp | self.x[rs2]) as u32).to_le_bytes();
+                        let inp = self.read_u32(addr) as i32 as i64 as u64;
+                        let out = (inp | self.x[rs2]) as u32;
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u32(addr, out);
                     }
                     // AMOOR.D
                     (0b01000, 0b011) => {
-                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = (inp | self.x[rs2]).to_le_bytes();
+                        let inp = self.read_u64(addr);
+                        let out = inp | self.x[rs2];
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u64(addr, out);
                     }
                     // AMOXOR.W
                     (0b00100, 0b010) => {
-                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr)) as i64 as u64;
-                        let out = ((inp ^ self.x[rs2]) as u32).to_le_bytes();
+                        let inp = self.read_u32(addr) as i32 as i64 as u64;
+                        let out = (inp ^ self.x[rs2]) as u32;
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u32(addr, out);
                     }
                     // AMOXOR.D
                     (0b00100, 0b011) => {
-                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = (inp ^ self.x[rs2]).to_le_bytes();
+                        let inp = self.read_u64(addr);
+                        let out = inp ^ self.x[rs2];
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u64(addr, out);
                     }
                     // AMOMAX.W
                     (0b10100, 0b010) => {
-                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = inp.max(self.x[rs2] as i32).to_le_bytes();
+                        let inp = self.read_u32(addr) as i32;
+                        let out = inp.max(self.x[rs2] as i32) as u32;
                         self.x[rd] = inp as u64;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u32(addr, out);
                     }
                     // AMOMAX.D
                     (0b10100, 0b011) => {
-                        let inp = i64::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = inp.max(self.x[rs2] as i64).to_le_bytes();
+                        let inp = self.read_u64(addr) as i64;
+                        let out = inp.max(self.x[rs2] as i64) as u64;
                         self.x[rd] = inp as u64;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u64(addr, out);
                     }
                     // AMOMIN.W
                     (0b10000, 0b010) => {
-                        let inp = i32::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = inp.min(self.x[rs2] as i32).to_le_bytes();
+                        let inp = self.read_u32(addr) as i32;
+                        let out = inp.min(self.x[rs2] as i32) as u32;
                         self.x[rd] = inp as u64;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u32(addr, out);
                     }
                     // AMOMIN.D
                     (0b10000, 0b011) => {
-                        let inp = i64::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = inp.min(self.x[rs2] as i64).to_le_bytes();
+                        let inp = self.read_u64(addr) as i64;
+                        let out = inp.min(self.x[rs2] as i64) as u64;
                         self.x[rd] = inp as u64;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u64(addr, out);
                     }
                     // AMOMAXU.W
                     (0b11100, 0b010) => {
-                        let inp = u32::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = inp.max(self.x[rs2] as u32).to_le_bytes();
+                        let inp = self.read_u32(addr);
+                        let out = inp.max(self.x[rs2] as u32);
                         self.x[rd] = inp as i32 as i64 as u64;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u32(addr, out);
                     }
                     // AMOMAXU.D
                     (0b11100, 0b011) => {
-                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = inp.max(self.x[rs2]).to_le_bytes();
+                        let inp = self.read_u64(addr);
+                        let out = inp.max(self.x[rs2]);
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u64(addr, out);
                     }
                     // AMOMINU.W
                     (0b11000, 0b010) => {
-                        let inp = u32::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = inp.min(self.x[rs2] as u32).to_le_bytes();
+                        let inp = self.read_u32(addr);
+                        let out = inp.min(self.x[rs2] as u32);
                         self.x[rd] = inp as i32 as i64 as u64;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u32(addr, out);
                     }
                     // AMOMINU.D
                     (0b11000, 0b011) => {
-                        let inp = u64::from_le_bytes(self.memory.read_bytes(addr));
-                        let out = inp.min(self.x[rs2]).to_le_bytes();
+                        let inp = self.read_u64(addr);
+                        let out = inp.min(self.x[rs2]);
                         self.x[rd] = inp;
-                        self.memory.write_bytes(addr, &out);
+                        self.write_u64(addr, out);
                     }
                     _ => self.illegal_instruction(),
                 }
@@ -1226,11 +1173,11 @@ impl Emulator {
                 match funct3 {
                     // FLW
                     0b010 => {
-                        self.f[rd] = f32::from_le_bytes(self.memory.read_bytes(addr)) as f64;
+                        self.f[rd] = f32::from_bits(self.read_u32(addr)) as f64;
                     }
                     // FLD
                     0b011 => {
-                        self.f[rd] = f64::from_le_bytes(self.memory.read_bytes(addr));
+                        self.f[rd] = f64::from_bits(self.read_u64(addr));
                     }
                     _ => self.illegal_instruction(),
                 }
@@ -1242,12 +1189,11 @@ impl Emulator {
                 match funct3 {
                     // FSW
                     0b010 => {
-                        self.memory
-                            .write_bytes(addr, &(self.f[rs1] as f32).to_le_bytes());
+                        self.write_u32(addr, (self.f[rs1] as f32).to_bits());
                     }
                     // FSD
                     0b011 => {
-                        self.memory.write_bytes(addr, &(self.f[rs1]).to_le_bytes());
+                        self.write_u64(addr, (self.f[rs1]).to_bits());
                     }
                     _ => self.illegal_instruction(),
                 }
