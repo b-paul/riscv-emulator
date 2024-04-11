@@ -32,6 +32,8 @@ struct Emulator {
     mtime: u64,
     mtimecmp: u64,
 
+    waiting: bool,
+
     pc: u64,
 
     // A valid reservation will always have the bottom 2 bits set to 0, since they must be aligned
@@ -72,6 +74,7 @@ impl Emulator {
             mseccfg: 0,
             mtime: 0,
             mtimecmp: 0,
+            waiting: false,
 
             pc: 0,
 
@@ -569,6 +572,11 @@ impl Emulator {
         // the x0 register should always be 0 (hopefully it doesn't get written to and then used)
         self.x[0] = 0;
 
+        // If we are currently waiting for an interrupt, don't run any instructions.
+        if self.waiting {
+            return;
+        }
+
         if self.try_16bit_instruction() {
             return;
         }
@@ -950,6 +958,10 @@ impl Emulator {
                         // MRET
                         0b00110000001000000000000001110011 => {
                             self.pc = self.mepc.wrapping_sub(4);
+                        }
+                        // WFI
+                        0b00010000010100000000000001110011 => {
+                            self.waiting = true;
                         }
                         _ => self.illegal_instruction(),
                     }
