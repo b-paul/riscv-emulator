@@ -36,8 +36,8 @@ struct Emulator {
 
     pc: u64,
 
-    // A valid reservation will always have the bottom 2 bits set to 0, since they must be aligned
-    // to a 4 byte boundary. This means we can encode information in these bottom bits!
+    // A valid reservation will always have the bottom 2 bits set to 0, since it must be aligned to
+    // a 4 byte boundary. This means we can encode information in these bottom bits!
     // 00 : No reservation
     // 01 : Word reservation
     // 10 : Double word reservation
@@ -133,12 +133,12 @@ impl Emulator {
             // Don't allow modification of allowed extensions for simplicity
             // (might change later)
             0x301 => {}
-            // mstatus (0x7fffffc0ff800015 is the WPRI mask)
+            // mstatus
             0x300 => {
-                self.mstatus = val & !0x7fffffc0ff800015;
-                // when privledge level x is not implemented xPP is read only 0.
+                self.mstatus = val;
+                // when privilege level x is not implemented xPP is read only 0.
                 self.mstatus &= !0x100;
-                // when privledge level x is not implemented xXL is read only 0.
+                // when privilege level x is not implemented xXL is read only 0.
                 self.mstatus &= !(3 << 30);
                 self.mstatus &= !(3 << 32);
                 // MPRIV is read only 0 if U is not implemented
@@ -1439,8 +1439,6 @@ fn main() {
     // - Zicsr
 
     loop {
-        //for _ in std::io::stdin().lines() {
-        //println!("{:x} {:?}", computer.pc, computer.x);
         computer.run_instruction();
     }
 }
