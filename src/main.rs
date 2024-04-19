@@ -6,6 +6,7 @@ use mem::Memory;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Privilege {
+    User = 0b00,
     Machine = 0b11,
 }
 
@@ -220,13 +221,11 @@ impl Emulator {
 
     fn handle_traps(&mut self) {
         if let Some(trap) = self.trap {
-            match self.privilege {
-                Privilege::Machine => {
-                    self.mepc = self.pc;
-                    self.mcause = trap;
-                    self.pc = self.mtvec.wrapping_sub(4);
-                }
-            }
+            // Traps by default are handled by M mode, but when S mode is implemented this must be
+            // changed.
+            self.mepc = self.pc;
+            self.mcause = trap;
+            self.pc = self.mtvec.wrapping_sub(4);
             self.trap = None;
 
             if trap == 11 {
@@ -240,26 +239,21 @@ impl Emulator {
     }
 
     fn illegal_instruction(&mut self) {
-        self.set_mtrap(2);
         let mut instruction = self.read_u32(self.pc as usize);
         if instruction & 3 != 3 {
             instruction &= 0xffff;
         }
-        match self.privilege {
-            Privilege::Machine => self.mtval = instruction as u64,
-        }
+        // S-MODE maybe this will be an S-mode interrupt or something
+        self.set_mtrap(2);
+        self.mtval = instruction as u64;
     }
 
     fn increment_counters(&mut self) {
-        match self.privilege {
-            Privilege::Machine => {
-                if self.mcountinhibit & 1 == 0 {
-                    self.mcycle += 1;
-                }
-                if self.mcountinhibit & 4 == 0 {
-                    self.minstret += 1;
-                }
-            }
+        if self.mcountinhibit & 1 == 0 {
+            self.mcycle += 1;
+        }
+        if self.mcountinhibit & 4 == 0 {
+            self.minstret += 1;
         }
     }
 
@@ -570,11 +564,7 @@ impl Emulator {
                                 // C.EBREAK
                                 (true, true, true) => {
                                     self.set_mtrap(3); // Breakpoint
-                                    match self.privilege {
-                                        Privilege::Machine => {
-                                            self.minstret = self.minstret.wrapping_sub(1)
-                                        }
-                                    }
+                                    self.minstret = self.minstret.wrapping_sub(1)
                                 }
                                 _ => self.illegal_instruction(),
                             }
@@ -980,18 +970,14 @@ impl Emulator {
                 if funct3 == 0 {
                     match instruction {
                         // ECALL
-                        0b00000000000000000000000001110011 => match self.privilege {
-                            Privilege::Machine => {
-                                self.set_mtrap(11);
-                                self.minstret = self.minstret.wrapping_sub(1);
-                            }
-                        },
+                        0b00000000000000000000000001110011 => {
+                            self.set_mtrap(11);
+                            self.minstret = self.minstret.wrapping_sub(1);
+                        }
                         // EBREAK
                         0b00000000000100000000000001110011 => {
                             self.set_mtrap(3); // Breakpoint
-                            match self.privilege {
-                                Privilege::Machine => self.minstret = self.minstret.wrapping_sub(1),
-                            }
+                            self.minstret = self.minstret.wrapping_sub(1)
                         }
                         // MRET
                         0b00110000001000000000000001110011 => {
@@ -1487,3 +1473,4 @@ fn main() {
         computer.run_instruction();
     }
 }
+
