@@ -984,7 +984,10 @@ impl Emulator {
                     match instruction {
                         // ECALL
                         0b00000000000000000000000001110011 => {
-                            self.set_mtrap(11);
+                            match self.privilege {
+                                Privilege::User => self.set_mtrap(8),
+                                Privilege::Machine => self.set_mtrap(11),
+                            }
                             self.minstret = self.minstret.wrapping_sub(1);
                         }
                         // EBREAK
