@@ -170,9 +170,10 @@ impl Emulator {
                     self.mstatus = val & !0x7fffffc0ff800015;
                     // when privilege level x is not implemented xPP is read only 0.
                     self.mstatus &= !0x100;
-                    // when privilege level x is not implemented xXL is read only 0.
-                    self.mstatus &= !(3 << 30);
+                    // SXL is read only 0 since we do not implement S yet
                     self.mstatus &= !(3 << 32);
+                    // Ensure that UXL stays on 64 bit, since we don't want to allow variable len
+                    self.mstatus = (self.mstatus & !(3 << 30)) | 1 << 31;
                     // MPRIV is read only 0 if U is not implemented
                     self.mstatus &= !(1 << 17);
                     // MXR is read only 0 if S is not implemented
