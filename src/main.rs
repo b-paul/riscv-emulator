@@ -10,6 +10,18 @@ enum Privilege {
     Machine = 0b11,
 }
 
+impl TryFrom<u64> for Privilege {
+    type Error = ();
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        match value {
+            0b00 => Ok(Privilege::User),
+            0b11 => Ok(Privilege::Machine),
+            _ => Err(()),
+        }
+    }
+}
+
 // TODO
 // enums for instructions ?!
 // enums for CSRs ?!
@@ -983,6 +995,19 @@ impl Emulator {
                         0b00110000001000000000000001110011 => {
                             if self.privilege >= Privilege::Machine {
                                 self.pc = self.mepc.wrapping_sub(4);
+                                // Set MIE to MPIE
+                                self.mstatus = (self.mstatus & !0x8) | (self.mstatus & !0x80) >> 4;
+                                // Set privilege to the value in MPP
+                                self.privilege = (self.mstatus >> 11 & 0x3)
+                                    .try_into()
+                                    .expect("An illegal MPP value was written to mstatus.");
+                                // Set MPIE to 1
+                                self.mstatus |= 0x80;
+                                // Set MPP to user mode
+                                self.mstatus &= !(3 << 11);
+                                if self.privilege != Privilege::Machine {
+                                    self.mstatus &= !(1 << 17);
+                                }
                             } else {
                                 // TODO i wasn't able to figure out what should happen in this case
                                 // from reading the specification, so I'm just going to assume
@@ -1473,4 +1498,3 @@ fn main() {
         computer.run_instruction();
     }
 }
-
