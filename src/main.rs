@@ -22,6 +22,15 @@ impl TryFrom<u64> for Privilege {
     }
 }
 
+impl From<Privilege> for u64 {
+    fn from(value: Privilege) -> Self {
+        match value {
+            Privilege::User => 0b00,
+            Privilege::Machine => 0b11,
+        }
+    }
+}
+
 // TODO
 // enums for instructions ?!
 // enums for CSRs ?!
@@ -167,9 +176,15 @@ impl Emulator {
                 0x301 => {}
                 // mstatus (0x7fffffc0ff800015 is the WPRI mask)
                 0x300 => {
+                    let old_mpp = self.mstatus & (3 << 11);
                     self.mstatus = val & !0x7fffffc0ff800015;
-                    // when privilege level x is not implemented xPP is read only 0.
+                    // We don't implement S yet, so keep SPP to 0
                     self.mstatus &= !0x100;
+                    // We want to ensure that MPP only has legal values (we don't implement S yet)
+                    let mpp = self.mstatus & (3 << 11);
+                    if mpp != 0b00 && mpp != 0b11 {
+                        self.mstatus = self.mstatus & !(3 << 1) | old_mpp;
+                    }
                     // SXL is read only 0 since we do not implement S yet
                     self.mstatus &= !(3 << 32);
                     // Ensure that UXL stays on 64 bit, since we don't want to allow variable len
@@ -240,6 +255,12 @@ impl Emulator {
             self.mcause = trap;
             self.pc = self.mtvec.wrapping_sub(4);
             self.trap = None;
+            // set MPP to the current privilege level;
+            self.mstatus = (self.mstatus & !(3 << 11)) | u64::from(self.privilege) << 11;
+            // set MPIE to MIE
+            self.mstatus = (self.mstatus & !(0x80)) | (self.mstatus & 0x8) << 4;
+            // Set MIE to 0
+            self.mstatus &= !0x8;
 
             if trap == 11 {
                 println!("Stage {}", self.x[10] / 2);
@@ -1009,6 +1030,7 @@ impl Emulator {
                                 self.mstatus |= 0x80;
                                 // Set MPP to user mode
                                 self.mstatus &= !(3 << 11);
+                                // If we are not in machine mode, set MPRV to 0
                                 if self.privilege != Privilege::Machine {
                                     self.mstatus &= !(1 << 17);
                                 }
