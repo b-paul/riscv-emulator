@@ -4,6 +4,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 mod mem;
 use mem::Memory;
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Privilege {
+    Machine = 0b11,
+}
+
+// TODO
+// enums for instructions ?!
+// enums for CSRs ?!
+// enums for exceptions ?!
+
 struct Emulator {
     memory: Memory,
 
@@ -33,6 +43,8 @@ struct Emulator {
     mtimecmp: u64,
 
     waiting: bool,
+
+    privilege: Privilege,
 
     pc: u64,
 
@@ -76,6 +88,8 @@ impl Emulator {
             mtimecmp: 0,
             waiting: false,
 
+            privilege: Privilege::Machine,
+
             pc: 0,
 
             reservation: AtomicUsize::new(0),
@@ -92,31 +106,37 @@ impl Emulator {
     }
 
     fn get_csr(&mut self, csr: u32, _read: bool) -> Option<u64> {
+        if self.privilege >= Privilege::Machine {
+            let val = match csr {
+                0x301 => Some(self.misa),                 // misa
+                0xF11 => Some(0),                         // mvendorid
+                0xF12 => Some(0),                         // marchid
+                0xF13 => Some(0),                         // mimpid
+                0xF14 => Some(0),                         // mhartid
+                0x300 => Some(self.mstatus),              // mstatus
+                0x305 => Some(self.mtvec),                // mtvec
+                0x344 => Some(0),                         // mip
+                0x304 => Some(0),                         // mie
+                0xB00 => Some(self.mcycle),               // mcycle
+                0xB02 => Some(self.minstret),             // minstret
+                0xB04..=0xB1F => Some(0),                 // mhpmcounterN (unimplemented)
+                0x323..=0x33F => Some(0),                 // mhpmeventN (unimplemented)
+                0x306 => Some(self.mcounteren as u64),    // mcounteren
+                0x320 => Some(self.mcountinhibit as u64), // mcountinhibit
+                0x340 => Some(self.mscratch),             // mscratch
+                0x341 => Some(self.mepc),                 // mepc
+                0x342 => Some(self.mcause),               // mcause
+                0x343 => Some(self.mtval),                // mtval
+                0xF15 => Some(0),                         // mconfigptr
+                0x30A => Some(self.menvcfg),              // menvcfg
+                0x747 => Some(self.mseccfg),              // mseccfg
+                _ => None,
+            };
+            if val.is_some() {
+                return val;
+            }
+        }
         match csr {
-            // Machine csrs
-            0x301 => Some(self.misa),                 // misa
-            0xF11 => Some(0),                         // mvendorid
-            0xF12 => Some(0),                         // marchid
-            0xF13 => Some(0),                         // mimpid
-            0xF14 => Some(0),                         // mhartid
-            0x300 => Some(self.mstatus),              // mstatus
-            0x305 => Some(self.mtvec),                // mtvec
-            0x344 => Some(0),                         // mip
-            0x304 => Some(0),                         // mie
-            0xB00 => Some(self.mcycle),               // mcycle
-            0xB02 => Some(self.minstret),             // minstret
-            0xB04..=0xB1F => Some(0),                 // mhpmcounterN (unimplemented)
-            0x323..=0x33F => Some(0),                 // mhpmeventN (unimplemented)
-            0x306 => Some(self.mcounteren as u64),    // mcounteren (check when implementing U or S)
-            0x320 => Some(self.mcountinhibit as u64), // mcountinhibit
-            0x340 => Some(self.mscratch),             // mscratch
-            0x341 => Some(self.mepc),                 // mepc
-            0x342 => Some(self.mcause),               // mcause
-            0x343 => Some(self.mtval),                // mtval
-            0xF15 => Some(0),                         // mconfigptr
-            0x30A => Some(self.menvcfg),              // menvcfg
-            0x747 => Some(self.mseccfg),              // mseccfg
-
             0x003 => Some(self.fcsr as u64),
             _ => None,
         }
@@ -126,70 +146,73 @@ impl Emulator {
         if !write {
             return;
         }
+        if self.privilege >= Privilege::Machine {
+            match csr {
+                // misa
+                // Don't allow modification of allowed extensions for simplicity
+                // (might change later)
+                0x301 => {}
+                // mstatus (0x7fffffc0ff800015 is the WPRI mask)
+                0x300 => {
+                    self.mstatus = val & !0x7fffffc0ff800015;
+                    // when privilege level x is not implemented xPP is read only 0.
+                    self.mstatus &= !0x100;
+                    // when privilege level x is not implemented xXL is read only 0.
+                    self.mstatus &= !(3 << 30);
+                    self.mstatus &= !(3 << 32);
+                    // MPRIV is read only 0 if U is not implemented
+                    self.mstatus &= !(1 << 17);
+                    // MXR is read only 0 if S is not implemented
+                    self.mstatus &= !(1 << 19);
+                    // SUM is read only 0 if S is not implemented
+                    self.mstatus &= !(1 << 18);
+                    // We only support little endian, so MBE, SBE and UBE are effectively read only 0.
+                    self.mstatus &= !(1 << 37);
+                    self.mstatus &= !(1 << 36);
+                    self.mstatus &= !(1 << 6);
+                    // TVM is read only 0 if S is not implemented
+                    self.mstatus &= !(1 << 20);
+                    // TW is read only 0 if there are no modes less than M implemented
+                    self.mstatus &= !(1 << 21);
+                    // TSR is read only 0 if S is not implemented
+                    self.mstatus &= !(1 << 22);
+                    // For simplicity FS will always say dirty
+                    self.mstatus |= 3 << 13;
+                    // VS and XS are read only zero as neither V nor X are implemented
+                    self.mstatus &= !(3 << 9);
+                    self.mstatus &= !(3 << 15);
+                }
+                0x305 => self.mtvec = val & !3, // mtvec (we assume always direct)
+                // mip
+                0x344 => {
+                    // For us everything in the bottom 16 bites of mip is read only
+                    self.mip = val & !0xffff;
+                }
+                // mie
+                0x304 => {
+                    // Zero out the zero bits of mie.
+                    self.mie = val & !0xd555;
+                    // SEIP, STIP and SSIP are read only zero since S is not implemented
+                    self.mie &= !(1 << 1);
+                    self.mie &= !(1 << 5);
+                    self.mie &= !(1 << 9);
+                    // LCOFIE is read only zero since Sscofpmf is not implemented
+                    self.mie &= !(1 << 13);
+                }
+                0xB00 => self.mcycle = val,            // mcycle
+                0xB02 => self.minstret = val,          // minstret
+                0x306 => self.mcounteren = val as u32, // mcounteren
+                0x340 => self.mscratch = val,          // mscratch
+                0x341 => self.mepc = val,              // mepc
+                0x342 => self.mcause = val,            // mcause
+                0x343 => self.mtval = val,             // mtval
+                0x30A => self.menvcfg = val,           // menvcfg TODO
+                0x747 => self.mseccfg = val,           // mseccfg TODO?
+
+                _ => (),
+            }
+        }
         match csr {
-            // Machine csrs
-
-            // misa
-            // Don't allow modification of allowed extensions for simplicity
-            // (might change later)
-            0x301 => {}
-            // mstatus
-            0x300 => {
-                self.mstatus = val;
-                // when privilege level x is not implemented xPP is read only 0.
-                self.mstatus &= !0x100;
-                // when privilege level x is not implemented xXL is read only 0.
-                self.mstatus &= !(3 << 30);
-                self.mstatus &= !(3 << 32);
-                // MPRIV is read only 0 if U is not implemented
-                self.mstatus &= !(1 << 17);
-                // MXR is read only 0 if S is not implemented
-                self.mstatus &= !(1 << 19);
-                // SUM is read only 0 if S is not implemented
-                self.mstatus &= !(1 << 18);
-                // We only support little endian, so MBE, SBE and UBE are effectively read only 0.
-                self.mstatus &= !(1 << 37);
-                self.mstatus &= !(1 << 36);
-                self.mstatus &= !(1 << 6);
-                // TVM is read only 0 if S is not implemented
-                self.mstatus &= !(1 << 20);
-                // TW is read only 0 if there are no modes less than M implemented
-                self.mstatus &= !(1 << 21);
-                // TSR is read only 0 if S is not implemented
-                self.mstatus &= !(1 << 22);
-                // For simplicity FS will always say dirty
-                self.mstatus |= 3 << 13;
-                // VS and XS are read only zero as neither V nor X are implemented
-                self.mstatus &= !(3 << 9);
-                self.mstatus &= !(3 << 15);
-            }
-            0x305 => self.mtvec = val & !3, // mtvec (we assume always direct)
-            // mip
-            0x344 => {
-                // For us everything in the bottom 16 bites of mip is read only
-                self.mip = val & !0xffff;
-            }
-            // mie
-            0x304 => {
-                // Zero out the zero bits of mie.
-                self.mie = val & !0xd555;
-                // SEIP, STIP and SSIP are read only zero since S is not implemented
-                self.mie &= !(1 << 1);
-                self.mie &= !(1 << 5);
-                self.mie &= !(1 << 9);
-                // LCOFIE is read only zero since Sscofpmf is not implemented
-                self.mie &= !(1 << 13);
-            }
-            0xB00 => self.mcycle = val,            // mcycle
-            0xB02 => self.minstret = val,          // minstret
-            0x306 => self.mcounteren = val as u32, // mcounteren
-            0x340 => self.mscratch = val,          // mscratch
-            0x341 => self.mepc = val,              // mepc
-            0x342 => self.mcause = val,            // mcause
-            0x343 => self.mtval = val,             // mtval
-            0x30A => self.menvcfg = val,           // menvcfg TODO
-            0x747 => self.mseccfg = val,           // mseccfg TODO?
-
             0x003 => self.fcsr = val as u32,
             _ => self.illegal_instruction(),
         }
@@ -197,9 +220,13 @@ impl Emulator {
 
     fn handle_traps(&mut self) {
         if let Some(trap) = self.trap {
-            self.mepc = self.pc;
-            self.mcause = trap;
-            self.pc = self.mtvec.wrapping_sub(4);
+            match self.privilege {
+                Privilege::Machine => {
+                    self.mepc = self.pc;
+                    self.mcause = trap;
+                    self.pc = self.mtvec.wrapping_sub(4);
+                }
+            }
             self.trap = None;
 
             if trap == 11 {
@@ -218,15 +245,21 @@ impl Emulator {
         if instruction & 3 != 3 {
             instruction &= 0xffff;
         }
-        self.mtval = instruction as u64;
+        match self.privilege {
+            Privilege::Machine => self.mtval = instruction as u64,
+        }
     }
 
     fn increment_counters(&mut self) {
-        if self.mcountinhibit & 1 == 0 {
-            self.mcycle += 1;
-        }
-        if self.mcountinhibit & 4 == 0 {
-            self.minstret += 1;
+        match self.privilege {
+            Privilege::Machine => {
+                if self.mcountinhibit & 1 == 0 {
+                    self.mcycle += 1;
+                }
+                if self.mcountinhibit & 4 == 0 {
+                    self.minstret += 1;
+                }
+            }
         }
     }
 
@@ -536,7 +569,12 @@ impl Emulator {
                                 }
                                 // C.EBREAK
                                 (true, true, true) => {
-                                    todo!("C.EBREAK")
+                                    self.set_mtrap(3); // Breakpoint
+                                    match self.privilege {
+                                        Privilege::Machine => {
+                                            self.minstret = self.minstret.wrapping_sub(1)
+                                        }
+                                    }
                                 }
                                 _ => self.illegal_instruction(),
                             }
@@ -942,18 +980,29 @@ impl Emulator {
                 if funct3 == 0 {
                     match instruction {
                         // ECALL
-                        0b00000000000000000000000001110011 => {
-                            self.set_mtrap(11); // Environment call from M mode
-                            self.minstret = self.minstret.wrapping_sub(1);
-                        }
+                        0b00000000000000000000000001110011 => match self.privilege {
+                            Privilege::Machine => {
+                                self.set_mtrap(11);
+                                self.minstret = self.minstret.wrapping_sub(1);
+                            }
+                        },
                         // EBREAK
                         0b00000000000100000000000001110011 => {
                             self.set_mtrap(3); // Breakpoint
-                            self.minstret = self.minstret.wrapping_sub(1);
+                            match self.privilege {
+                                Privilege::Machine => self.minstret = self.minstret.wrapping_sub(1),
+                            }
                         }
                         // MRET
                         0b00110000001000000000000001110011 => {
-                            self.pc = self.mepc.wrapping_sub(4);
+                            if self.privilege >= Privilege::Machine {
+                                self.pc = self.mepc.wrapping_sub(4);
+                            } else {
+                                // TODO i wasn't able to figure out what should happen in this case
+                                // from reading the specification, so I'm just going to assume
+                                // invalid instruction
+                                self.illegal_instruction()
+                            }
                         }
                         // WFI
                         0b00010000010100000000000001110011 => {
