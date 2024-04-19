@@ -230,14 +230,10 @@ impl Emulator {
         }
     }
 
-    fn try_16bit_instruction(&mut self) -> bool {
+    fn run_16bit_instruction(&mut self) {
         let instruction = self.read_u16(self.pc as usize);
         let opcode = instruction & 0x3;
         let funct3 = (instruction >> 13) & 0x7;
-
-        if opcode == 0b11 {
-            return false;
-        }
 
         if instruction == 0 {
             self.illegal_instruction();
@@ -564,8 +560,6 @@ impl Emulator {
         self.increment_counters();
 
         self.handle_traps();
-
-        true
     }
 
     fn run_instruction(&mut self) {
@@ -577,11 +571,13 @@ impl Emulator {
             return;
         }
 
-        if self.try_16bit_instruction() {
+        let instruction = self.read_u32(self.pc as usize);
+
+        if instruction & 0b11 != 0b11 {
+            self.run_16bit_instruction();
             return;
         }
 
-        let instruction = self.read_u32(self.pc as usize);
         let opcode = instruction & 0x7f;
         let rd = (instruction >> 7 & 0x1f) as usize;
         let rs1 = (instruction >> 15 & 0x1f) as usize;
