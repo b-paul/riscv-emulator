@@ -2,6 +2,7 @@
 
 pub mod base;
 pub mod ziscr;
+pub mod mul;
 
 pub struct RType {
     rd: u8,
@@ -92,4 +93,5 @@ impl UType {
 pub enum Instruction {
     Base(BaseInstruction),
     Ziscr(ZiscrInstruction),
+    Mul(MulInstruction),
 }
