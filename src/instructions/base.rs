@@ -50,4 +50,7 @@ pub enum BaseInstruction {
     Sllw(RType),
     Srlw(RType),
     Sraw(Rtype),
+    Fence(u32),
+    Ecall(u32),
+    Ebreak(u32),
 }
