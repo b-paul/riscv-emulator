@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-mod base;
+pub mod base;
 
 pub struct RType {
     rd: u8,
@@ -89,5 +89,5 @@ impl UType {
 }
 
 pub enum Instruction {
-    Base(BaseInstruction)
+    Base(BaseInstruction),
 }
