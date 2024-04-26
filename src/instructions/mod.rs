@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod base;
+pub mod ziscr;
 
 pub struct RType {
     rd: u8,
@@ -90,4 +91,5 @@ impl UType {
 
 pub enum Instruction {
     Base(BaseInstruction),
+    Ziscr(ZiscrInstruction),
 }
