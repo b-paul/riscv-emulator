@@ -1,0 +1,26 @@
+use super::RType;
+
+pub enum AtomicInstruction {
+    LrW(RType),
+    ScW(RType),
+    AmoSwapW(RType),
+    AmoAddW(RType),
+    AmoXorW(RType),
+    AmoAndW(RType),
+    AmoOrW(RType),
+    AmoMinW(RType),
+    AmoMaxW(RType),
+    AmoMinuW(RType),
+    AmoMaxuW(RType),
+    LrD(RType),
+    ScD(RType),
+    AmoSwapD(RType),
+    AmoAddD(RType),
+    AmoXorD(RType),
+    AmoAndD(RType),
+    AmoOrD(RType),
+    AmoMinD(RType),
+    AmoMaxD(RType),
+    AmoMinuD(RType),
+    AmoMaxuD(RType),
+}

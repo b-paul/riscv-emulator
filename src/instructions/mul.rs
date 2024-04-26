@@ -1,4 +1,4 @@
-use super::{BType, IType, JType, RType, SType, UType};
+use super::RType;
 
 pub enum MulInstruction {
     Mul(RType),
