@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 
+pub mod atomic;
 pub mod base;
-pub mod ziscr;
 pub mod mul;
+pub mod ziscr;
 
+use atomic::AtomicInstruction;
 use base::BaseInstruction;
-use ziscr::ZiscrInstruction;
 use mul::MulInstruction;
+use ziscr::ZiscrInstruction;
 
 pub struct RType {
     rd: u8,
@@ -98,4 +100,9 @@ pub enum Instruction {
     Base(BaseInstruction),
     Ziscr(ZiscrInstruction),
     Mul(MulInstruction),
+    Atomic {
+        instr: AtomicInstruction,
+        aq: bool,
+        rl: bool,
+    },
 }
