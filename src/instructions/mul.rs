@@ -1,6 +1,6 @@
 use super::{BType, IType, JType, RType, SType, UType};
 
-pub enum Mul {
+pub enum MulInstruction {
     Mul(RType),
     Mulw(RType),
     Mulh(RType),

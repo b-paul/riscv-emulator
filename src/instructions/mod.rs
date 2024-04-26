@@ -4,6 +4,10 @@ pub mod base;
 pub mod ziscr;
 pub mod mul;
 
+use base::BaseInstruction;
+use ziscr::ZiscrInstruction;
+use mul::MulInstruction;
+
 pub struct RType {
     rd: u8,
     rs1: u8,
