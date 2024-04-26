@@ -2,6 +2,7 @@ use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod csr;
+mod instructions;
 mod mem;
 use mem::Memory;
 
