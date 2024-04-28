@@ -45,7 +45,6 @@ impl Emulator {
             }
         }
         match csr {
-            0x003 => Some(self.fcsr as u64),
             _ => None,
         }
     }
@@ -128,7 +127,6 @@ impl Emulator {
             }
         }
         match csr {
-            0x003 => self.fcsr = val as u32,
             _ => self.illegal_instruction(),
         }
     }
