@@ -787,7 +787,7 @@ impl Emulator {
                             self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
                         }
                     }
-                    // BGTU
+                    // BGEU
                     0b111 => {
                         if self.x[rs1] >= self.x[rs2] {
                             self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
