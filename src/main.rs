@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod csr;
 mod instructions;
+mod interpret;
 mod mem;
 use mem::Memory;
 
