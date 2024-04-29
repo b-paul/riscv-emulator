@@ -4,13 +4,13 @@ pub mod atomic;
 pub mod base;
 pub mod machine;
 pub mod mul;
-pub mod ziscr;
+pub mod zicsr;
 
 use atomic::AtomicInstruction;
 use base::BaseInstruction;
 use machine::MachineInstruction;
 use mul::MulInstruction;
-use ziscr::ZiscrInstruction;
+use zicsr::ZicsrInstruction;
 
 pub struct RType {
     rd: u8,
@@ -113,7 +113,7 @@ impl JType {
 pub enum Instruction {
     Base(BaseInstruction),
     Machine(MachineInstruction),
-    Ziscr(ZiscrInstruction),
+    Zicsr(ZicsrInstruction),
     Mul(MulInstruction),
     Atomic {
         instr: AtomicInstruction,
@@ -138,7 +138,7 @@ impl Instruction {
         use Instruction as I;
         use MachineInstruction as MA;
         use MulInstruction as M;
-        use ZiscrInstruction as Z;
+        use ZicsrInstruction as Z;
 
         match opcode {
             // Immediate instructions
@@ -377,17 +377,17 @@ impl Instruction {
                     // We must be doing a Zicsr instruction
                     match funct3 {
                         // CSRRW
-                        0b001 => Some(I::Ziscr(Z::Csrrw(IType::new(instruction)))),
+                        0b001 => Some(I::Zicsr(Z::Csrrw(IType::new(instruction)))),
                         // CSRRS
-                        0b010 => Some(I::Ziscr(Z::Csrrw(IType::new(instruction)))),
+                        0b010 => Some(I::Zicsr(Z::Csrrw(IType::new(instruction)))),
                         // CSRRC
-                        0b011 => Some(I::Ziscr(Z::Csrrw(IType::new(instruction)))),
+                        0b011 => Some(I::Zicsr(Z::Csrrw(IType::new(instruction)))),
                         // CSRRWI
-                        0b101 => Some(I::Ziscr(Z::Csrrw(IType::new(instruction)))),
+                        0b101 => Some(I::Zicsr(Z::Csrrw(IType::new(instruction)))),
                         // CSRRSI
-                        0b110 => Some(I::Ziscr(Z::Csrrw(IType::new(instruction)))),
+                        0b110 => Some(I::Zicsr(Z::Csrrw(IType::new(instruction)))),
                         // CSRRCI
-                        0b111 => Some(I::Ziscr(Z::Csrrw(IType::new(instruction)))),
+                        0b111 => Some(I::Zicsr(Z::Csrrw(IType::new(instruction)))),
                         _ => None,
                     }
                 }

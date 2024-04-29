@@ -1,6 +1,6 @@
 use super::IType;
 
-pub enum ZiscrInstruction {
+pub enum ZicsrInstruction {
     Csrrw(IType),
     Csrrs(IType),
     Csrrc(IType),
