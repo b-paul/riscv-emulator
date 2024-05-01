@@ -9,6 +9,23 @@ pub enum Branch {
     Geu,
 }
 
+pub enum BLoad {
+    B,
+    H,
+    W,
+    Wu,
+    D,
+    Bu,
+    Hu,
+}
+
+pub enum BStore {
+    B,
+    H,
+    W,
+    D,
+}
+
 pub enum BImmediate64 {
     Add,
     Slt,
@@ -55,17 +72,8 @@ pub enum BaseInstruction {
     Jal(JType),
     Jalr(IType),
     Branch(Branch, BType),
-    Lb(IType),
-    Lh(IType),
-    Lw(IType),
-    Lwu(IType),
-    Ld(IType),
-    Lbu(IType),
-    Lhu(IType),
-    Sb(SType),
-    Sh(SType),
-    Sw(SType),
-    Sd(SType),
+    Load(BLoad, IType),
+    Store(BStore, SType),
     Imm64(BImmediate64, IType),
     Imm32(BImmediate32, IType),
     Reg64(BRegister64, RType),
