@@ -1,4 +1,4 @@
-use crate::{Emulator, instructions::zicsr::ZicsrInstruction};
+use crate::{instructions::zicsr::ZicsrInstruction, Emulator};
 
 impl Emulator {
     pub fn execute_zicsr(&mut self, instruction: ZicsrInstruction) {
