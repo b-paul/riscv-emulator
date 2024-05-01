@@ -7,51 +7,51 @@ pub mod mul;
 pub mod zicsr;
 
 use atomic::AtomicInstruction;
-use base::BaseInstruction;
+use base::B;
 use machine::MachineInstruction;
 use mul::MulInstruction;
 use zicsr::ZicsrInstruction;
 
 pub struct RType {
-    rd: u8,
-    rs1: u8,
-    rs2: u8,
+    pub rd: usize,
+    pub rs1: usize,
+    pub rs2: usize,
 }
 
 pub struct IType {
-    rd: u8,
-    rs1: u8,
-    imm: u16,
+    pub rd: usize,
+    pub rs1: usize,
+    pub imm: u16,
 }
 
 pub struct SType {
-    rs1: u8,
-    rs2: u8,
-    imm: u16,
+    pub rs1: usize,
+    pub rs2: usize,
+    pub imm: u16,
 }
 
 pub struct BType {
-    rs1: u8,
-    rs2: u8,
-    imm: u16,
+    pub rs1: usize,
+    pub rs2: usize,
+    pub imm: u16,
 }
 
 pub struct UType {
-    rd: u8,
-    imm: u32,
+    pub rd: usize,
+    pub imm: i32,
 }
 
 pub struct JType {
-    rd: u8,
-    imm: u32,
+    pub rd: usize,
+    pub imm: i32,
 }
 
 impl RType {
     fn new(instruction: u32) -> Self {
         RType {
-            rd: (instruction >> 7 & 0x1f) as u8,
-            rs1: (instruction >> 15 & 0x1f) as u8,
-            rs2: (instruction >> 20 & 0x1f) as u8,
+            rd: (instruction >> 7 & 0x1f) as usize,
+            rs1: (instruction >> 15 & 0x1f) as usize,
+            rs2: (instruction >> 20 & 0x1f) as usize,
         }
     }
 }
@@ -59,8 +59,8 @@ impl RType {
 impl IType {
     fn new(instruction: u32) -> Self {
         IType {
-            rd: (instruction >> 7 & 0x1f) as u8,
-            rs1: (instruction >> 15 & 0x1f) as u8,
+            rd: (instruction >> 7 & 0x1f) as usize,
+            rs1: (instruction >> 15 & 0x1f) as usize,
             imm: (instruction >> 20) as u16,
         }
     }
@@ -69,8 +69,8 @@ impl IType {
 impl SType {
     fn new(instruction: u32) -> Self {
         SType {
-            rs1: (instruction >> 15 & 0x1f) as u8,
-            rs2: (instruction >> 20 & 0x1f) as u8,
+            rs1: (instruction >> 15 & 0x1f) as usize,
+            rs2: (instruction >> 20 & 0x1f) as usize,
             imm: (instruction >> 20 | instruction >> 7 & 0x1f) as u16,
         }
     }
@@ -79,8 +79,8 @@ impl SType {
 impl BType {
     fn new(instruction: u32) -> Self {
         BType {
-            rs1: (instruction >> 15 & 0x1f) as u8,
-            rs2: (instruction >> 20 & 0x1f) as u8,
+            rs1: (instruction >> 15 & 0x1f) as usize,
+            rs2: (instruction >> 20 & 0x1f) as usize,
             imm: (instruction >> 7 & 0x1e
                 | instruction >> 20 & 0x7e0
                 | instruction << 4 & 0x800
@@ -92,8 +92,8 @@ impl BType {
 impl UType {
     fn new(instruction: u32) -> Self {
         UType {
-            rd: (instruction >> 7 & 0x1f) as u8,
-            imm: instruction & 0xfffff000,
+            rd: (instruction >> 7 & 0x1f) as usize,
+            imm: (instruction & 0xfffff000) as i32,
         }
     }
 }
@@ -101,17 +101,17 @@ impl UType {
 impl JType {
     fn new(instruction: u32) -> Self {
         JType {
-            rd: (instruction >> 7 & 0x1f) as u8,
-            imm: instruction >> 20 & 0x7fe
+            rd: (instruction >> 7 & 0x1f) as usize,
+            imm: (instruction >> 20 & 0x7fe
                 | instruction >> 9 & 0x800
                 | instruction & 0xff000
-                | instruction >> 11 & 0x10000,
+                | instruction >> 11 & 0x10000) as i32,
         }
     }
 }
 
 pub enum Instruction {
-    Base(BaseInstruction),
+    Base(B),
     Machine(MachineInstruction),
     Zicsr(ZicsrInstruction),
     Mul(MulInstruction),
@@ -134,7 +134,7 @@ impl Instruction {
         let funct7 = instruction >> 25 & 0x7f;
 
         use AtomicInstruction as A;
-        use BaseInstruction as B;
+        use B as B;
         use Instruction as I;
         use MachineInstruction as MA;
         use MulInstruction as M;
