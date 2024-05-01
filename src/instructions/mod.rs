@@ -7,7 +7,7 @@ pub mod mul;
 pub mod zicsr;
 
 use atomic::AtomicInstruction;
-use base::{BaseInstruction, Branch};
+use base::{BaseInstruction, Branch, Immediate32, Immediate64};
 use machine::MachineInstruction;
 use mul::MulInstruction;
 use zicsr::ZicsrInstruction;
@@ -140,27 +140,31 @@ impl Instruction {
         use MulInstruction as M;
         use ZicsrInstruction as Z;
 
+        use Immediate64 as Im64;
+        use Immediate32 as Im32;
+
         match opcode {
             0b0010011 => {
                 match funct3 {
-                    0b000 => Some(I::Base(B::Addi(IType::new(instruction)))),
-                    0b010 => Some(I::Base(B::Slti(IType::new(instruction)))),
-                    0b011 => Some(I::Base(B::Sltiu(IType::new(instruction)))),
-                    0b100 => Some(I::Base(B::Xori(IType::new(instruction)))),
-                    0b110 => Some(I::Base(B::Ori(IType::new(instruction)))),
-                    0b111 => Some(I::Base(B::Andi(IType::new(instruction)))),
+                    0b000 => Some(I::Base(B::Imm64(Im64::Add, IType::new(instruction)))),
+                    0b010 => Some(I::Base(B::Imm64(Im64::Slt, IType::new(instruction)))),
+                    0b011 => Some(I::Base(B::Imm64(Im64::Sltu, IType::new(instruction)))),
+                    0b100 => Some(I::Base(B::Imm64(Im64::Xor, IType::new(instruction)))),
+                    0b110 => Some(I::Base(B::Imm64(Im64::Or, IType::new(instruction)))),
+                    0b111 => Some(I::Base(B::Imm64(Im64::And, IType::new(instruction)))),
                     0b001 => {
                         let upper = instruction >> 26 & 0x3f;
                         match upper {
-                            0b000000 => Some(I::Base(B::Slli(IType::new(instruction)))),
+                            0b000000 => Some(I::Base(B::Imm64(Im64::Sll, IType::new(instruction)))),
                             _ => None,
                         }
                     }
                     0b101 => {
                         let upper = instruction >> 26 & 0x3f;
+                        let instruction = instruction & 0x1ffffff;
                         match upper {
-                            0b0000000 => Some(I::Base(B::Srli(IType::new(instruction)))),
-                            0b010000 => Some(I::Base(B::Srai(IType::new(instruction & 0x1ffffff)))),
+                            0b0000000 => Some(I::Base(B::Imm64(Im64::Srl, IType::new(instruction)))),
+                            0b010000 => Some(I::Base(B::Imm64(Im64::Sra, IType::new(instruction)))),
                             _ => None,
                         }
                     }
@@ -170,20 +174,20 @@ impl Instruction {
 
             0b0011011 => {
                 match funct3 {
-                    0b000 => Some(I::Base(B::Addiw(IType::new(instruction)))),
+                    0b000 => Some(I::Base(B::Imm32(Im32::Add, IType::new(instruction)))),
                     0b001 => {
                         let upper = instruction >> 25 & 0x7f;
                         match upper {
-                            0b0000000 => Some(I::Base(B::Slliw(IType::new(instruction)))),
+                            0b0000000 => Some(I::Base(B::Imm32(Im32::Sll, IType::new(instruction)))),
                             _ => None,
                         }
                     }
                     0b101 => {
                         let upper = instruction >> 25 & 0x7f;
                         match upper {
-                            0b0000000 => Some(I::Base(B::Srliw(IType::new(instruction)))),
+                            0b0000000 => Some(I::Base(B::Imm32(Im32::Srl, IType::new(instruction)))),
                             0b0100000 => {
-                                Some(I::Base(B::Sraiw(IType::new(instruction & 0x1ffffff))))
+                                Some(I::Base(B::Imm32(Im32::Sra, IType::new(instruction))))
                             }
                             _ => None,
                         }

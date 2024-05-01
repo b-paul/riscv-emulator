@@ -9,6 +9,25 @@ pub enum Branch {
     Geu,
 }
 
+pub enum Immediate64 {
+    Add,
+    Slt,
+    Sltu,
+    Xor,
+    Or,
+    And,
+    Sll,
+    Srl,
+    Sra,
+}
+
+pub enum Immediate32 {
+    Add,
+    Sll,
+    Srl,
+    Sra,
+}
+
 pub enum BaseInstruction {
     Lui(UType),
     Auipc(UType),
@@ -26,15 +45,8 @@ pub enum BaseInstruction {
     Sh(SType),
     Sw(SType),
     Sd(SType),
-    Addi(IType),
-    Slti(IType),
-    Sltiu(IType),
-    Xori(IType),
-    Ori(IType),
-    Andi(IType),
-    Slli(IType),
-    Srli(IType),
-    Srai(IType),
+    Imm64(Immediate64, IType),
+    Imm32(Immediate32, IType),
     Add(RType),
     Sub(RType),
     Sll(RType),
@@ -45,10 +57,6 @@ pub enum BaseInstruction {
     Sra(RType),
     Or(RType),
     And(RType),
-    Addiw(IType),
-    Slliw(IType),
-    Srliw(IType),
-    Sraiw(IType),
     Addw(RType),
     Subw(RType),
     Sllw(RType),
