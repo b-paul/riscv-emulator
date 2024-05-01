@@ -1,4 +1,4 @@
-use crate::{instructions::base::BaseInstruction, Emulator, Privilege};
+use crate::{instructions::base::{BaseInstruction, Branch}, Emulator, Privilege};
 
 impl Emulator {
     pub fn execute_base(&mut self, instruction: BaseInstruction) {
@@ -20,39 +20,17 @@ impl Emulator {
                 self.x[i.rd] = self.pc.wrapping_add(4);
                 self.pc = tmp.wrapping_add(offset).wrapping_sub(4);
             }
-            BaseInstruction::Beq(i) => {
+            BaseInstruction::Branch(branch, i) => {
                 let offset = ((i.imm as i32) << 20 >> 19) as u64;
-                if self.x[i.rs1] == self.x[i.rs2] {
-                    self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
-                }
-            },
-            BaseInstruction::Bne(i) => {
-                let offset = ((i.imm as i32) << 20 >> 19) as u64;
-                if self.x[i.rs1] != self.x[i.rs2] {
-                    self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
-                }
-            },
-            BaseInstruction::Blt(i) => {
-                let offset = ((i.imm as i32) << 20 >> 19) as u64;
-                if (self.x[i.rs1] as i64) < (self.x[i.rs2] as i64) {
-                    self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
-                }
-            },
-            BaseInstruction::Bltu(i) => {
-                let offset = ((i.imm as i32) << 20 >> 19) as u64;
-                if self.x[i.rs1] < self.x[i.rs2] {
-                    self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
-                }
-            },
-            BaseInstruction::Bge(i) => {
-                let offset = ((i.imm as i32) << 20 >> 19) as u64;
-                if (self.x[i.rs1] as i64) >= (self.x[i.rs2] as i64) {
-                    self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
-                }
-            },
-            BaseInstruction::Bgeu(i) => {
-                let offset = ((i.imm as i32) << 20 >> 19) as u64;
-                if self.x[i.rs1] >= self.x[i.rs2] {
+                let taken = match branch {
+                    Branch::Eq => self.x[i.rs1] == self.x[i.rs2],
+                    Branch::Ne => self.x[i.rs1] != self.x[i.rs2],
+                    Branch::Lt => (self.x[i.rs1] as i64) < (self.x[i.rs2] as i64),
+                    Branch::Ltu => self.x[i.rs1] < self.x[i.rs2],
+                    Branch::Ge => (self.x[i.rs1] as i64) >= (self.x[i.rs2] as i64),
+                    Branch::Geu => self.x[i.rs1] >= self.x[i.rs2],
+                };
+                if taken {
                     self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
                 }
             },

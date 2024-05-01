@@ -7,7 +7,7 @@ pub mod mul;
 pub mod zicsr;
 
 use atomic::AtomicInstruction;
-use base::B;
+use base::{BaseInstruction, Branch};
 use machine::MachineInstruction;
 use mul::MulInstruction;
 use zicsr::ZicsrInstruction;
@@ -111,7 +111,7 @@ impl JType {
 }
 
 pub enum Instruction {
-    Base(B),
+    Base(BaseInstruction),
     Machine(MachineInstruction),
     Zicsr(ZicsrInstruction),
     Mul(MulInstruction),
@@ -134,7 +134,7 @@ impl Instruction {
         let funct7 = instruction >> 25 & 0x7f;
 
         use AtomicInstruction as A;
-        use B as B;
+        use BaseInstruction as B;
         use Instruction as I;
         use MachineInstruction as MA;
         use MulInstruction as M;
@@ -246,12 +246,12 @@ impl Instruction {
             }
             0b1100011 => {
                 match funct3 {
-                    0b000 => Some(I::Base(B::Beq(BType::new(instruction)))),
-                    0b001 => Some(I::Base(B::Bne(BType::new(instruction)))),
-                    0b100 => Some(I::Base(B::Blt(BType::new(instruction)))),
-                    0b110 => Some(I::Base(B::Bltu(BType::new(instruction)))),
-                    0b101 => Some(I::Base(B::Bge(BType::new(instruction)))),
-                    0b111 => Some(I::Base(B::Bgeu(BType::new(instruction)))),
+                    0b000 => Some(I::Base(B::Branch(Branch::Eq, BType::new(instruction)))),
+                    0b001 => Some(I::Base(B::Branch(Branch::Ne, BType::new(instruction)))),
+                    0b100 => Some(I::Base(B::Branch(Branch::Lt, BType::new(instruction)))),
+                    0b110 => Some(I::Base(B::Branch(Branch::Ltu, BType::new(instruction)))),
+                    0b101 => Some(I::Base(B::Branch(Branch::Ge, BType::new(instruction)))),
+                    0b111 => Some(I::Base(B::Branch(Branch::Geu, BType::new(instruction)))),
                     _ => None,
                 }
             }
