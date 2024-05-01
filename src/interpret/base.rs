@@ -1,4 +1,4 @@
-use crate::{instructions::base::{BaseInstruction, Branch, BImmediate32, BImmediate64}, Emulator, Privilege};
+use crate::{instructions::base::{BaseInstruction, Branch, BImmediate32, BImmediate64, BRegister32, BRegister64}, Emulator, Privilege};
 
 impl Emulator {
     pub fn execute_base(&mut self, instruction: BaseInstruction) {
@@ -70,21 +70,33 @@ impl Emulator {
                     BImmediate32::Sra => (val as i32).wrapping_shr(imm) as u32,
                 } as i32 as i64 as u64;
             }
-            BaseInstruction::Add(i) => self.x[i.rd] = self.x[i.rs1].wrapping_add(self.x[i.rs2]),
-            BaseInstruction::Sub(i) => self.x[i.rd] = self.x[i.rs1].wrapping_sub(self.x[i.rs2]),
-            BaseInstruction::Sll(i) => self.x[i.rd] = self.x[i.rs1].wrapping_shl((self.x[i.rs2] & 0x3f) as u32),
-            BaseInstruction::Slt(i) => self.x[i.rd] = if (self.x[i.rs1] as i64) < (self.x[i.rs2] as i64) { 1 } else { 0 },
-            BaseInstruction::Sltu(i) => self.x[i.rd] = if self.x[i.rs1] < self.x[i.rs2] { 1 } else { 0 },
-            BaseInstruction::Xor(i) => self.x[i.rd] = self.x[i.rs1] ^ self.x[i.rs2],
-            BaseInstruction::Srl(i) => self.x[i.rd] = self.x[i.rs1].wrapping_shr((self.x[i.rs2] & 0x3f) as u32),
-            BaseInstruction::Sra(i) => self.x[i.rd] = ((self.x[i.rs1] as i64) >> (self.x[i.rs2] & 0x3f)) as u64,
-            BaseInstruction::Or(i) => self.x[i.rd] = self.x[i.rs1] | self.x[i.rs2],
-            BaseInstruction::And(i) => self.x[i.rd] = self.x[i.rs1] & self.x[i.rs2],
-            BaseInstruction::Addw(i) => self.x[i.rd] = (self.x[i.rs1] as i32).wrapping_add(self.x[i.rs2] as i32) as i64 as u64,
-            BaseInstruction::Subw(i) => self.x[i.rd] = (self.x[i.rs1] as i32).wrapping_sub(self.x[i.rs2] as i32) as i64 as u64,
-            BaseInstruction::Sllw(i) => self.x[i.rd] = (self.x[i.rs1] as i32).wrapping_shl((self.x[i.rs2] & 0x1f) as u32) as i64 as u64,
-            BaseInstruction::Srlw(i) => self.x[i.rd] = (self.x[i.rs1] as u32).wrapping_shr((self.x[i.rs2] & 0x1f) as u32) as i32 as i64 as u64,
-            BaseInstruction::Sraw(i) => self.x[i.rd] = (self.x[i.rs1] as i32).wrapping_shr((self.x[i.rs2] & 0x1f) as u32) as i64 as u64,
+            BaseInstruction::Reg64(op, i) => {
+                let a = self.x[i.rs1];
+                let b = self.x[i.rs2];
+                self.x[i.rd] = match op {
+                    BRegister64::Add => a.wrapping_add(b),
+                    BRegister64::Sub => a.wrapping_sub(b),
+                    BRegister64::Slt => ((a as i64) < (b as i64)) as u64,
+                    BRegister64::Sltu => (a < b) as u64,
+                    BRegister64::Xor => a ^ b,
+                    BRegister64::Or => a | b,
+                    BRegister64::And => a & b,
+                    BRegister64::Sll => a.wrapping_shl((b & 0x3f) as u32),
+                    BRegister64::Srl => a.wrapping_shr((b & 0x3f) as u32),
+                    BRegister64::Sra => (a as i64).wrapping_shr((b & 0x3f) as u32) as u64,
+                };
+            }
+            BaseInstruction::Reg32(op, i) => {
+                let a = self.x[i.rs1] as i32;
+                let b = self.x[i.rs2] as i32;
+                self.x[i.rd] = match op {
+                    BRegister32::Add => a.wrapping_add(b),
+                    BRegister32::Sub => a.wrapping_sub(b),
+                    BRegister32::Sll => a.wrapping_shl((b & 0x1f) as u32),
+                    BRegister32::Srl => (a as u32).wrapping_shl((b & 0x1f) as u32) as i32,
+                    BRegister32::Sra => a.wrapping_shl((b & 0x1f) as u32),
+                } as i64 as u64;
+            }
             BaseInstruction::Fence(_) => (),
             BaseInstruction::Ecall(_) => {
                 match self.privilege {

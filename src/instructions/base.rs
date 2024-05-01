@@ -28,6 +28,27 @@ pub enum BImmediate32 {
     Sra,
 }
 
+pub enum BRegister64 {
+    Add,
+    Sub,
+    Slt,
+    Sltu,
+    Xor,
+    Or,
+    And,
+    Sll,
+    Srl,
+    Sra,
+}
+
+pub enum BRegister32 {
+    Add,
+    Sub,
+    Sll,
+    Srl,
+    Sra,
+}
+
 pub enum BaseInstruction {
     Lui(UType),
     Auipc(UType),
@@ -47,21 +68,8 @@ pub enum BaseInstruction {
     Sd(SType),
     Imm64(BImmediate64, IType),
     Imm32(BImmediate32, IType),
-    Add(RType),
-    Sub(RType),
-    Sll(RType),
-    Slt(RType),
-    Sltu(RType),
-    Xor(RType),
-    Srl(RType),
-    Sra(RType),
-    Or(RType),
-    And(RType),
-    Addw(RType),
-    Subw(RType),
-    Sllw(RType),
-    Srlw(RType),
-    Sraw(RType),
+    Reg64(BRegister64, RType),
+    Reg32(BRegister32, RType),
     Fence(u32),
     Ecall(u32),
     Ebreak(u32),
