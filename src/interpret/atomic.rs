@@ -1,4 +1,4 @@
-use crate::{Emulator, instructions::atomic::AtomicInstruction};
+use crate::{instructions::atomic::AtomicInstruction, Emulator};
 
 impl Emulator {
     pub fn execute_atomic(&mut self, instruction: AtomicInstruction, _aq: bool, _rl: bool) {

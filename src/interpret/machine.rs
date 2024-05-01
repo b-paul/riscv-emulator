@@ -1,4 +1,4 @@
-use crate::{Emulator, instructions::machine::MachineInstruction, Privilege};
+use crate::{instructions::machine::MachineInstruction, Emulator, Privilege};
 
 impl Emulator {
     pub fn execute_machine(&mut self, instruction: MachineInstruction) {

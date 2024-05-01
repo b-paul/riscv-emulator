@@ -1,4 +1,4 @@
-use crate::{Emulator, instructions::mul::MulInstruction};
+use crate::{instructions::mul::MulInstruction, Emulator};
 
 impl Emulator {
     pub fn execute_mul(&mut self, instruction: MulInstruction) {
