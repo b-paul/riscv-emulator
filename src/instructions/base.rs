@@ -1,16 +1,20 @@
 use super::{BType, IType, JType, RType, SType, UType};
 
+pub enum Branch {
+    Eq,
+    Ne,
+    Lt,
+    Ltu,
+    Ge,
+    Geu,
+}
+
 pub enum BaseInstruction {
     Lui(UType),
     Auipc(UType),
     Jal(JType),
     Jalr(IType),
-    Beq(BType),
-    Bne(BType),
-    Blt(BType),
-    Bltu(BType),
-    Bge(BType),
-    Bgeu(BType),
+    Branch(Branch, BType),
     Lb(IType),
     Lh(IType),
     Lw(IType),
