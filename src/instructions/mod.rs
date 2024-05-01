@@ -7,7 +7,9 @@ pub mod mul;
 pub mod zicsr;
 
 use atomic::AtomicInstruction;
-use base::{BImmediate32, BImmediate64, BRegister32, BRegister64, BaseInstruction, Branch};
+use base::{
+    BImmediate32, BImmediate64, BLoad, BRegister32, BRegister64, BStore, BaseInstruction, Branch,
+};
 use machine::MachineInstruction;
 use mul::MulInstruction;
 use zicsr::ZicsrInstruction;
@@ -251,20 +253,20 @@ impl Instruction {
             },
 
             0b0000011 => match funct3 {
-                0b000 => I::Base(B::Lb(IType::new(instruction))),
-                0b001 => I::Base(B::Lh(IType::new(instruction))),
-                0b010 => I::Base(B::Lw(IType::new(instruction))),
-                0b100 => I::Base(B::Lbu(IType::new(instruction))),
-                0b101 => I::Base(B::Lhu(IType::new(instruction))),
-                0b110 => I::Base(B::Lwu(IType::new(instruction))),
-                0b011 => I::Base(B::Ld(IType::new(instruction))),
+                0b000 => I::Base(B::Load(BLoad::B, IType::new(instruction))),
+                0b001 => I::Base(B::Load(BLoad::H, IType::new(instruction))),
+                0b010 => I::Base(B::Load(BLoad::W, IType::new(instruction))),
+                0b100 => I::Base(B::Load(BLoad::Bu, IType::new(instruction))),
+                0b101 => I::Base(B::Load(BLoad::Hu, IType::new(instruction))),
+                0b110 => I::Base(B::Load(BLoad::Wu, IType::new(instruction))),
+                0b011 => I::Base(B::Load(BLoad::D, IType::new(instruction))),
                 _ => None?,
             },
             0b0100011 => match funct3 {
-                0b000 => I::Base(B::Sb(SType::new(instruction))),
-                0b001 => I::Base(B::Sh(SType::new(instruction))),
-                0b010 => I::Base(B::Sw(SType::new(instruction))),
-                0b011 => I::Base(B::Sd(SType::new(instruction))),
+                0b000 => I::Base(B::Store(BStore::B, SType::new(instruction))),
+                0b001 => I::Base(B::Store(BStore::H, SType::new(instruction))),
+                0b010 => I::Base(B::Store(BStore::W, SType::new(instruction))),
+                0b011 => I::Base(B::Store(BStore::D, SType::new(instruction))),
                 _ => None?,
             },
 

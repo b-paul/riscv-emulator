@@ -1,4 +1,10 @@
-use crate::{instructions::base::{BaseInstruction, Branch, BImmediate32, BImmediate64, BRegister32, BRegister64}, Emulator, Privilege};
+use crate::{
+    instructions::base::{
+        BImmediate32, BImmediate64, BLoad, BRegister32, BRegister64, BStore, BaseInstruction,
+        Branch,
+    },
+    Emulator, Privilege,
+};
 
 impl Emulator {
     pub fn execute_base(&mut self, instruction: BaseInstruction) {
@@ -33,18 +39,30 @@ impl Emulator {
                 if taken {
                     self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
                 }
-            },
-            BaseInstruction::Lb(i) => self.x[i.rd] = self.read_u8(self.x[i.rs1].wrapping_add(i.imm as u64) as usize) as i8 as i64 as u64,
-            BaseInstruction::Lbu(i) => self.x[i.rd] = self.read_u8(self.x[i.rs1].wrapping_add(i.imm as u64) as usize) as u64,
-            BaseInstruction::Lh(i) => self.x[i.rd] = self.read_u16(self.x[i.rs1].wrapping_add(i.imm as u64) as usize) as i16 as i64 as u64,
-            BaseInstruction::Lhu(i) => self.x[i.rd] = self.read_u16(self.x[i.rs1].wrapping_add(i.imm as u64) as usize) as u64,
-            BaseInstruction::Lw(i) => self.x[i.rd] = self.read_u32(self.x[i.rs1].wrapping_add(i.imm as u64) as usize) as i32 as i64 as u64,
-            BaseInstruction::Lwu(i) => self.x[i.rd] = self.read_u32(self.x[i.rs1].wrapping_add(i.imm as u64) as usize) as u64,
-            BaseInstruction::Ld(i) => self.x[i.rd] = self.read_u64(self.x[i.rs1].wrapping_add(i.imm as u64) as usize),
-            BaseInstruction::Sb(i) => self.write_u8(self.x[i.rs1].wrapping_add(((i.imm as i32) << 20 >> 20) as i64 as u64) as usize, self.x[i.rs2] as u8),
-            BaseInstruction::Sh(i) => self.write_u16(self.x[i.rs1].wrapping_add(((i.imm as i32) << 20 >> 20) as i64 as u64) as usize, self.x[i.rs2] as u16),
-            BaseInstruction::Sw(i) => self.write_u32(self.x[i.rs1].wrapping_add(((i.imm as i32) << 20 >> 20) as i64 as u64) as usize, self.x[i.rs2] as u32),
-            BaseInstruction::Sd(i) => self.write_u64(self.x[i.rs1].wrapping_add(((i.imm as i32) << 20 >> 20) as i64 as u64) as usize, self.x[i.rs2]),
+            }
+            BaseInstruction::Load(op, i) => {
+                let addr = self.x[i.rs1].wrapping_add(i.imm as u64) as usize;
+                self.x[i.rd] = match op {
+                    BLoad::B => self.read_u8(addr) as i8 as i64 as u64,
+                    BLoad::Bu => self.read_u8(addr) as u64,
+                    BLoad::H => self.read_u16(addr) as i16 as i64 as u64,
+                    BLoad::Hu => self.read_u16(addr) as u64,
+                    BLoad::W => self.read_u32(addr) as i32 as i64 as u64,
+                    BLoad::Wu => self.read_u32(addr) as u64,
+                    BLoad::D => self.read_u64(addr) as u64,
+                };
+            }
+            BaseInstruction::Store(op, i) => {
+                let offset = ((i.imm as i64) << 52 >> 52) as u64;
+                let addr = self.x[i.rs1].wrapping_add(offset) as usize;
+                let val = self.x[i.rs2];
+                match op {
+                    BStore::B => self.write_u8(addr, val as u8),
+                    BStore::H => self.write_u16(addr, val as u16),
+                    BStore::W => self.write_u32(addr, val as u32),
+                    BStore::D => self.write_u64(addr, val),
+                }
+            }
             BaseInstruction::Imm64(op, i) => {
                 let imm = ((i.imm as i64) << 32 >> 52) as u64;
                 let val = self.x[i.rs1];
@@ -104,11 +122,11 @@ impl Emulator {
                     Privilege::Machine => self.set_mtrap(11),
                 }
                 self.minstret = self.minstret.wrapping_sub(1);
-            },
+            }
             BaseInstruction::Ebreak(_) => {
                 self.set_mtrap(3);
                 self.minstret = self.minstret.wrapping_sub(1)
-            },
+            }
         }
     }
 }
