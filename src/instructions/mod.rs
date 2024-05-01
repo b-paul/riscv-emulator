@@ -7,7 +7,7 @@ pub mod mul;
 pub mod zicsr;
 
 use atomic::AtomicInstruction;
-use base::{BImmediate32, BImmediate64, BaseInstruction, Branch};
+use base::{BImmediate32, BImmediate64, BRegister64, BRegister32, BaseInstruction, Branch};
 use machine::MachineInstruction;
 use mul::MulInstruction;
 use zicsr::ZicsrInstruction;
@@ -140,21 +140,23 @@ impl Instruction {
         use MulInstruction as M;
         use ZicsrInstruction as Z;
 
-        use BImmediate32 as Im32;
-        use BImmediate64 as Im64;
+        use BImmediate32 as Bimm32;
+        use BImmediate64 as Bimm64;
+        use BRegister32 as BReg32;
+        use BRegister64 as BReg64;
 
         match opcode {
             0b0010011 => match funct3 {
-                0b000 => Some(I::Base(B::Imm64(Im64::Add, IType::new(instruction)))),
-                0b010 => Some(I::Base(B::Imm64(Im64::Slt, IType::new(instruction)))),
-                0b011 => Some(I::Base(B::Imm64(Im64::Sltu, IType::new(instruction)))),
-                0b100 => Some(I::Base(B::Imm64(Im64::Xor, IType::new(instruction)))),
-                0b110 => Some(I::Base(B::Imm64(Im64::Or, IType::new(instruction)))),
-                0b111 => Some(I::Base(B::Imm64(Im64::And, IType::new(instruction)))),
+                0b000 => Some(I::Base(B::Imm64(Bimm64::Add, IType::new(instruction)))),
+                0b010 => Some(I::Base(B::Imm64(Bimm64::Slt, IType::new(instruction)))),
+                0b011 => Some(I::Base(B::Imm64(Bimm64::Sltu, IType::new(instruction)))),
+                0b100 => Some(I::Base(B::Imm64(Bimm64::Xor, IType::new(instruction)))),
+                0b110 => Some(I::Base(B::Imm64(Bimm64::Or, IType::new(instruction)))),
+                0b111 => Some(I::Base(B::Imm64(Bimm64::And, IType::new(instruction)))),
                 0b001 => {
                     let upper = instruction >> 26 & 0x3f;
                     match upper {
-                        0b000000 => Some(I::Base(B::Imm64(Im64::Sll, IType::new(instruction)))),
+                        0b000000 => Some(I::Base(B::Imm64(Bimm64::Sll, IType::new(instruction)))),
                         _ => None,
                     }
                 }
@@ -162,8 +164,8 @@ impl Instruction {
                     let upper = instruction >> 26 & 0x3f;
                     let instruction = instruction & 0x1ffffff;
                     match upper {
-                        0b0000000 => Some(I::Base(B::Imm64(Im64::Srl, IType::new(instruction)))),
-                        0b010000 => Some(I::Base(B::Imm64(Im64::Sra, IType::new(instruction)))),
+                        0b0000000 => Some(I::Base(B::Imm64(Bimm64::Srl, IType::new(instruction)))),
+                        0b010000 => Some(I::Base(B::Imm64(Bimm64::Sra, IType::new(instruction)))),
                         _ => None,
                     }
                 }
@@ -171,19 +173,19 @@ impl Instruction {
             },
 
             0b0011011 => match funct3 {
-                0b000 => Some(I::Base(B::Imm32(Im32::Add, IType::new(instruction)))),
+                0b000 => Some(I::Base(B::Imm32(Bimm32::Add, IType::new(instruction)))),
                 0b001 => {
                     let upper = instruction >> 25 & 0x7f;
                     match upper {
-                        0b0000000 => Some(I::Base(B::Imm32(Im32::Sll, IType::new(instruction)))),
+                        0b0000000 => Some(I::Base(B::Imm32(Bimm32::Sll, IType::new(instruction)))),
                         _ => None,
                     }
                 }
                 0b101 => {
                     let upper = instruction >> 25 & 0x7f;
                     match upper {
-                        0b0000000 => Some(I::Base(B::Imm32(Im32::Srl, IType::new(instruction)))),
-                        0b0100000 => Some(I::Base(B::Imm32(Im32::Sra, IType::new(instruction)))),
+                        0b0000000 => Some(I::Base(B::Imm32(Bimm32::Srl, IType::new(instruction)))),
+                        0b0100000 => Some(I::Base(B::Imm32(Bimm32::Sra, IType::new(instruction)))),
                         _ => None,
                     }
                 }
@@ -195,16 +197,16 @@ impl Instruction {
             0b0010111 => Some(I::Base(B::Auipc(UType::new(instruction)))),
 
             0b0110011 => match (funct3, funct7) {
-                (0b000, 0b0000000) => Some(I::Base(B::Add(RType::new(instruction)))),
-                (0b000, 0b0100000) => Some(I::Base(B::Sub(RType::new(instruction)))),
-                (0b010, 0b0000000) => Some(I::Base(B::Slt(RType::new(instruction)))),
-                (0b011, 0b0000000) => Some(I::Base(B::Sltu(RType::new(instruction)))),
-                (0b100, 0b0000000) => Some(I::Base(B::Xor(RType::new(instruction)))),
-                (0b110, 0b0000000) => Some(I::Base(B::Or(RType::new(instruction)))),
-                (0b111, 0b0000000) => Some(I::Base(B::And(RType::new(instruction)))),
-                (0b001, 0b0000000) => Some(I::Base(B::Sll(RType::new(instruction)))),
-                (0b101, 0b0000000) => Some(I::Base(B::Srl(RType::new(instruction)))),
-                (0b101, 0b0100000) => Some(I::Base(B::Sra(RType::new(instruction)))),
+                (0b000, 0b0000000) => Some(I::Base(B::Reg64(BReg64::Add, RType::new(instruction)))),
+                (0b000, 0b0100000) => Some(I::Base(B::Reg64(BReg64::Sub, RType::new(instruction)))),
+                (0b010, 0b0000000) => Some(I::Base(B::Reg64(BReg64::Slt, RType::new(instruction)))),
+                (0b011, 0b0000000) => Some(I::Base(B::Reg64(BReg64::Sltu, RType::new(instruction)))),
+                (0b100, 0b0000000) => Some(I::Base(B::Reg64(BReg64::Xor, RType::new(instruction)))),
+                (0b110, 0b0000000) => Some(I::Base(B::Reg64(BReg64::Or, RType::new(instruction)))),
+                (0b111, 0b0000000) => Some(I::Base(B::Reg64(BReg64::And, RType::new(instruction)))),
+                (0b001, 0b0000000) => Some(I::Base(B::Reg64(BReg64::Sll, RType::new(instruction)))),
+                (0b101, 0b0000000) => Some(I::Base(B::Reg64(BReg64::Srl, RType::new(instruction)))),
+                (0b101, 0b0100000) => Some(I::Base(B::Reg64(BReg64::Sra, RType::new(instruction)))),
                 (0b000, 0b0000001) => Some(I::Mul(M::Mul(RType::new(instruction)))),
                 (0b001, 0b0000001) => Some(I::Mul(M::Mulh(RType::new(instruction)))),
                 (0b011, 0b0000001) => Some(I::Mul(M::Mulhu(RType::new(instruction)))),
@@ -217,11 +219,11 @@ impl Instruction {
             },
 
             0b0111011 => match (funct3, funct7) {
-                (0b000, 0b0000000) => Some(I::Base(B::Addw(RType::new(instruction)))),
-                (0b000, 0b0100000) => Some(I::Base(B::Subw(RType::new(instruction)))),
-                (0b001, 0b0000000) => Some(I::Base(B::Sllw(RType::new(instruction)))),
-                (0b101, 0b0000000) => Some(I::Base(B::Srlw(RType::new(instruction)))),
-                (0b101, 0b0100000) => Some(I::Base(B::Sraw(RType::new(instruction)))),
+                (0b000, 0b0000000) => Some(I::Base(B::Reg32(BReg32::Add, RType::new(instruction)))),
+                (0b000, 0b0100000) => Some(I::Base(B::Reg32(BReg32::Add, RType::new(instruction)))),
+                (0b001, 0b0000000) => Some(I::Base(B::Reg32(BReg32::Add, RType::new(instruction)))),
+                (0b101, 0b0000000) => Some(I::Base(B::Reg32(BReg32::Add, RType::new(instruction)))),
+                (0b101, 0b0100000) => Some(I::Base(B::Reg32(BReg32::Add, RType::new(instruction)))),
                 (0b000, 0b0000001) => Some(I::Mul(M::Mulw(RType::new(instruction)))),
                 (0b100, 0b0000001) => Some(I::Mul(M::Divw(RType::new(instruction)))),
                 (0b101, 0b0000001) => Some(I::Mul(M::Divuw(RType::new(instruction)))),
