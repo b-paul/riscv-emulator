@@ -7,7 +7,7 @@ pub mod mul;
 pub mod zicsr;
 
 use atomic::AtomicInstruction;
-use base::{BaseInstruction, Branch, Immediate32, Immediate64};
+use base::{BImmediate32, BImmediate64, BaseInstruction, Branch};
 use machine::MachineInstruction;
 use mul::MulInstruction;
 use zicsr::ZicsrInstruction;
@@ -140,8 +140,8 @@ impl Instruction {
         use MulInstruction as M;
         use ZicsrInstruction as Z;
 
-        use Immediate32 as Im32;
-        use Immediate64 as Im64;
+        use BImmediate32 as Im32;
+        use BImmediate64 as Im64;
 
         match opcode {
             0b0010011 => match funct3 {

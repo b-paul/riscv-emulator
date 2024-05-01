@@ -9,7 +9,7 @@ pub enum Branch {
     Geu,
 }
 
-pub enum Immediate64 {
+pub enum BImmediate64 {
     Add,
     Slt,
     Sltu,
@@ -21,7 +21,7 @@ pub enum Immediate64 {
     Sra,
 }
 
-pub enum Immediate32 {
+pub enum BImmediate32 {
     Add,
     Sll,
     Srl,
@@ -45,8 +45,8 @@ pub enum BaseInstruction {
     Sh(SType),
     Sw(SType),
     Sd(SType),
-    Imm64(Immediate64, IType),
-    Imm32(Immediate32, IType),
+    Imm64(BImmediate64, IType),
+    Imm32(BImmediate32, IType),
     Add(RType),
     Sub(RType),
     Sll(RType),
