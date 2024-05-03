@@ -11,7 +11,7 @@ use base::{
     BImmediate32, BImmediate64, BLoad, BRegister32, BRegister64, BStore, BaseInstruction, Branch,
 };
 use machine::MachineInstruction;
-use mul::MulInstruction;
+use mul::{MReg32, MReg64, MulInstruction};
 use zicsr::ZicsrInstruction;
 
 pub struct RType {
@@ -209,14 +209,14 @@ impl Instruction {
                 (0b001, 0b0000000) => I::Base(B::Reg64(BReg64::Sll, RType::new(instruction))),
                 (0b101, 0b0000000) => I::Base(B::Reg64(BReg64::Srl, RType::new(instruction))),
                 (0b101, 0b0100000) => I::Base(B::Reg64(BReg64::Sra, RType::new(instruction))),
-                (0b000, 0b0000001) => I::Mul(M::Mul(RType::new(instruction))),
-                (0b001, 0b0000001) => I::Mul(M::Mulh(RType::new(instruction))),
-                (0b011, 0b0000001) => I::Mul(M::Mulhu(RType::new(instruction))),
-                (0b010, 0b0000001) => I::Mul(M::Mulhsu(RType::new(instruction))),
-                (0b100, 0b0000001) => I::Mul(M::Div(RType::new(instruction))),
-                (0b101, 0b0000001) => I::Mul(M::Divu(RType::new(instruction))),
-                (0b110, 0b0000001) => I::Mul(M::Rem(RType::new(instruction))),
-                (0b111, 0b0000001) => I::Mul(M::Remu(RType::new(instruction))),
+                (0b000, 0b0000001) => I::Mul(M::Reg64(MReg64::Mul, RType::new(instruction))),
+                (0b001, 0b0000001) => I::Mul(M::Reg64(MReg64::Mulh, RType::new(instruction))),
+                (0b011, 0b0000001) => I::Mul(M::Reg64(MReg64::Mulhu, RType::new(instruction))),
+                (0b010, 0b0000001) => I::Mul(M::Reg64(MReg64::Mulhsu, RType::new(instruction))),
+                (0b100, 0b0000001) => I::Mul(M::Reg64(MReg64::Div, RType::new(instruction))),
+                (0b101, 0b0000001) => I::Mul(M::Reg64(MReg64::Divu, RType::new(instruction))),
+                (0b110, 0b0000001) => I::Mul(M::Reg64(MReg64::Rem, RType::new(instruction))),
+                (0b111, 0b0000001) => I::Mul(M::Reg64(MReg64::Remu, RType::new(instruction))),
                 _ => None?,
             },
 
@@ -226,11 +226,11 @@ impl Instruction {
                 (0b001, 0b0000000) => I::Base(B::Reg32(BReg32::Add, RType::new(instruction))),
                 (0b101, 0b0000000) => I::Base(B::Reg32(BReg32::Add, RType::new(instruction))),
                 (0b101, 0b0100000) => I::Base(B::Reg32(BReg32::Add, RType::new(instruction))),
-                (0b000, 0b0000001) => I::Mul(M::Mulw(RType::new(instruction))),
-                (0b100, 0b0000001) => I::Mul(M::Divw(RType::new(instruction))),
-                (0b101, 0b0000001) => I::Mul(M::Divuw(RType::new(instruction))),
-                (0b110, 0b0000001) => I::Mul(M::Remw(RType::new(instruction))),
-                (0b111, 0b0000001) => I::Mul(M::Remuw(RType::new(instruction))),
+                (0b000, 0b0000001) => I::Mul(M::Reg32(MReg32::Mul, RType::new(instruction))),
+                (0b100, 0b0000001) => I::Mul(M::Reg32(MReg32::Div, RType::new(instruction))),
+                (0b101, 0b0000001) => I::Mul(M::Reg32(MReg32::Divu, RType::new(instruction))),
+                (0b110, 0b0000001) => I::Mul(M::Reg32(MReg32::Rem, RType::new(instruction))),
+                (0b111, 0b0000001) => I::Mul(M::Reg32(MReg32::Remu, RType::new(instruction))),
                 _ => None?,
             },
 
