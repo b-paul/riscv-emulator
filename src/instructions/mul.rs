@@ -1,17 +1,25 @@
 use super::RType;
 
+pub enum MReg64 {
+    Mul,
+    Mulh,
+    Mulhsu,
+    Mulhu,
+    Div,
+    Divu,
+    Rem,
+    Remu,
+}
+
+pub enum MReg32 {
+    Mul,
+    Div,
+    Divu,
+    Rem,
+    Remu,
+}
+
 pub enum MulInstruction {
-    Mul(RType),
-    Mulw(RType),
-    Mulh(RType),
-    Mulhsu(RType),
-    Mulhu(RType),
-    Div(RType),
-    Divw(RType),
-    Divu(RType),
-    Divuw(RType),
-    Rem(RType),
-    Remw(RType),
-    Remu(RType),
-    Remuw(RType),
+    Reg64(MReg64, RType),
+    Reg32(MReg32, RType),
 }
