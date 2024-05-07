@@ -12,7 +12,7 @@ use base::{
 };
 use machine::MachineInstruction;
 use mul::{MReg32, MReg64, MulInstruction};
-use zicsr::ZicsrInstruction;
+use zicsr::{ZicsrInstruction, ZOp};
 
 pub struct RType {
     pub rd: usize,
@@ -287,12 +287,12 @@ impl Instruction {
                     }
                 } else {
                     match funct3 {
-                        0b001 => I::Zicsr(Z::Csrrw(IType::new(instruction))),
-                        0b010 => I::Zicsr(Z::Csrrw(IType::new(instruction))),
-                        0b011 => I::Zicsr(Z::Csrrw(IType::new(instruction))),
-                        0b101 => I::Zicsr(Z::Csrrw(IType::new(instruction))),
-                        0b110 => I::Zicsr(Z::Csrrw(IType::new(instruction))),
-                        0b111 => I::Zicsr(Z::Csrrw(IType::new(instruction))),
+                        0b001 => I::Zicsr(Z(ZOp::Csrrw, false, IType::new(instruction))),
+                        0b010 => I::Zicsr(Z(ZOp::Csrrs, false, IType::new(instruction))),
+                        0b011 => I::Zicsr(Z(ZOp::Csrrc, false, IType::new(instruction))),
+                        0b101 => I::Zicsr(Z(ZOp::Csrrw, true, IType::new(instruction))),
+                        0b110 => I::Zicsr(Z(ZOp::Csrrs, true, IType::new(instruction))),
+                        0b111 => I::Zicsr(Z(ZOp::Csrrc, true, IType::new(instruction))),
                         _ => None?,
                     }
                 }

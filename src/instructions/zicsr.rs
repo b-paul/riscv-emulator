@@ -1,11 +1,10 @@
 use super::IType;
 
-pub enum ZicsrInstruction {
-    Csrrw(IType),
-    Csrrs(IType),
-    Csrrc(IType),
-
-    Csrrwi(IType),
-    Csrrsi(IType),
-    Csrrci(IType),
+#[derive(PartialEq, Eq)]
+pub enum ZOp {
+    Csrrw,
+    Csrrs,
+    Csrrc,
 }
+
+pub struct ZicsrInstruction(pub ZOp, pub bool, pub IType);
