@@ -18,48 +18,46 @@ impl Emulator {
             self.illegal_instruction();
             return;
         }
-        let addr = instr.rs1 as usize;
+        let addr = instr.rs1;
         match op {
-            AOp::Mem(op) => {
-                match op {
-                    AMem::LrW => {
-                        if instr.rs2 != 0 {
-                            self.illegal_instruction();
-                        }
-                        self.x[instr.rd] = self.read_u32(addr) as i32 as i64 as u64;
+            AOp::Mem(op) => match op {
+                AMem::LrW => {
+                    if instr.rs2 != 0 {
+                        self.illegal_instruction();
+                    }
+                    self.x[instr.rd] = self.read_u32(addr) as i32 as i64 as u64;
 
-                        self.reservation.store(addr | 0b01, Ordering::Relaxed);
+                    self.reservation.store(addr | 0b01, Ordering::Relaxed);
+                }
+                AMem::ScW => {
+                    if instr.rs2 != 0 {
+                        self.illegal_instruction();
                     }
-                    AMem::ScW => {
-                        if instr.rs2 != 0 {
-                            self.illegal_instruction();
-                        }
-                        self.x[instr.rd] = self.read_u64(addr);
+                    self.x[instr.rd] = self.read_u64(addr);
 
-                        self.reservation.store(addr | 0b10, Ordering::Relaxed);
-                    }
-                    AMem::LrD => {
-                        if self.reservation.load(Ordering::Acquire) == addr | 0b01 {
-                            self.write_u32(addr, self.x[instr.rs2] as u32);
-                            self.reservation.store(0, Ordering::Release);
-                            self.x[instr.rd] = 0;
-                        } else {
-                            self.x[instr.rd] = 1;
-                        }
-                    }
-                    AMem::ScD => {
-                        if self.reservation.load(Ordering::Acquire) == addr | 0b10 {
-                            self.write_u64(addr, self.x[instr.rs2]);
-                            self.reservation.store(0, Ordering::Release);
-                            self.x[instr.rd] = 0;
-                        } else {
-                            self.x[instr.rd] = 1;
-                        }
+                    self.reservation.store(addr | 0b10, Ordering::Relaxed);
+                }
+                AMem::LrD => {
+                    if self.reservation.load(Ordering::Acquire) == addr | 0b01 {
+                        self.write_u32(addr, self.x[instr.rs2] as u32);
+                        self.reservation.store(0, Ordering::Release);
+                        self.x[instr.rd] = 0;
+                    } else {
+                        self.x[instr.rd] = 1;
                     }
                 }
-            }
+                AMem::ScD => {
+                    if self.reservation.load(Ordering::Acquire) == addr | 0b10 {
+                        self.write_u64(addr, self.x[instr.rs2]);
+                        self.reservation.store(0, Ordering::Release);
+                        self.x[instr.rd] = 0;
+                    } else {
+                        self.x[instr.rd] = 1;
+                    }
+                }
+            },
             AOp::AmoW(op) => {
-                let inp = self.read_u32(addr) as u32;
+                let inp = self.read_u32(addr);
                 let inp2 = self.x[instr.rs2] as u32;
                 let out = match op {
                     AAmoW::Swap => inp2,
@@ -91,7 +89,7 @@ impl Emulator {
                 };
                 self.x[instr.rd] = inp;
                 self.write_u64(addr, out);
-            },
+            }
         }
     }
 }

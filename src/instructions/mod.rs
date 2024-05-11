@@ -131,7 +131,6 @@ impl Instruction {
         let funct3 = instruction >> 12 & 0x7;
         let funct7 = instruction >> 25 & 0x7f;
 
-        use AtomicInstruction as A;
         use BaseInstruction as B;
         use Instruction as I;
         use MachineInstruction as MA;
