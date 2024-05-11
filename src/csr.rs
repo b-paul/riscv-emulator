@@ -123,7 +123,10 @@ impl Emulator {
 
                 _ => (),
             }
+            return;
         }
-        self.illegal_instruction();
+        match csr {
+            _ => self.illegal_instruction(),
+        }
     }
 }
