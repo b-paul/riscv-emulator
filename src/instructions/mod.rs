@@ -6,13 +6,13 @@ pub mod machine;
 pub mod mul;
 pub mod zicsr;
 
-use atomic::AtomicInstruction;
+use atomic::{AAmoD, AAmoW, AMem, AOp, AtomicInstruction};
 use base::{
     BImmediate32, BImmediate64, BLoad, BRegister32, BRegister64, BStore, BaseInstruction, Branch,
 };
 use machine::MachineInstruction;
 use mul::{MReg32, MReg64, MulInstruction};
-use zicsr::{ZicsrInstruction, ZOp};
+use zicsr::{ZOp, ZicsrInstruction};
 
 pub struct RType {
     pub rd: usize,
@@ -117,11 +117,7 @@ pub enum Instruction {
     Machine(MachineInstruction),
     Zicsr(ZicsrInstruction),
     Mul(MulInstruction),
-    Atomic {
-        instr: AtomicInstruction,
-        aq: bool,
-        rl: bool,
-    },
+    Atomic(AtomicInstruction),
 }
 
 impl Instruction {
@@ -302,32 +298,38 @@ impl Instruction {
                 let funct5 = instruction >> 27 & 0x1f;
                 let aq = instruction >> 26 & 1 != 0;
                 let rl = instruction >> 25 & 1 != 0;
-                let instr = match (funct5, funct3) {
-                    (0b00010, 0b010) => A::LrW(RType::new(instruction)),
-                    (0b00010, 0b011) => A::LrD(RType::new(instruction)),
-                    (0b00011, 0b010) => A::ScW(RType::new(instruction)),
-                    (0b00011, 0b011) => A::ScD(RType::new(instruction)),
-                    (0b00001, 0b010) => A::AmoSwapW(RType::new(instruction)),
-                    (0b00001, 0b011) => A::AmoSwapD(RType::new(instruction)),
-                    (0b00000, 0b010) => A::AmoAddW(RType::new(instruction)),
-                    (0b00000, 0b011) => A::AmoAddD(RType::new(instruction)),
-                    (0b01100, 0b010) => A::AmoAndW(RType::new(instruction)),
-                    (0b01100, 0b011) => A::AmoAndW(RType::new(instruction)),
-                    (0b01000, 0b010) => A::AmoOrW(RType::new(instruction)),
-                    (0b01000, 0b011) => A::AmoOrD(RType::new(instruction)),
-                    (0b00100, 0b010) => A::AmoXorW(RType::new(instruction)),
-                    (0b00100, 0b011) => A::AmoXorD(RType::new(instruction)),
-                    (0b10100, 0b010) => A::AmoMaxD(RType::new(instruction)),
-                    (0b10100, 0b011) => A::AmoMaxD(RType::new(instruction)),
-                    (0b10000, 0b010) => A::AmoMinW(RType::new(instruction)),
-                    (0b10000, 0b011) => A::AmoMinD(RType::new(instruction)),
-                    (0b11100, 0b010) => A::AmoMaxuW(RType::new(instruction)),
-                    (0b11100, 0b011) => A::AmoMaxuD(RType::new(instruction)),
-                    (0b11000, 0b010) => A::AmoMinuW(RType::new(instruction)),
-                    (0b11000, 0b011) => A::AmoMinuD(RType::new(instruction)),
+                let op = match (funct5, funct3) {
+                    (0b00010, 0b010) => AOp::Mem(AMem::LrW),
+                    (0b00010, 0b011) => AOp::Mem(AMem::LrD),
+                    (0b00011, 0b010) => AOp::Mem(AMem::ScW),
+                    (0b00011, 0b011) => AOp::Mem(AMem::ScD),
+                    (0b00001, 0b010) => AOp::AmoW(AAmoW::Swap),
+                    (0b00001, 0b011) => AOp::AmoD(AAmoD::Swap),
+                    (0b00000, 0b010) => AOp::AmoW(AAmoW::Add),
+                    (0b00000, 0b011) => AOp::AmoD(AAmoD::Add),
+                    (0b01100, 0b010) => AOp::AmoW(AAmoW::And),
+                    (0b01100, 0b011) => AOp::AmoD(AAmoD::And),
+                    (0b01000, 0b010) => AOp::AmoW(AAmoW::Or),
+                    (0b01000, 0b011) => AOp::AmoD(AAmoD::Or),
+                    (0b00100, 0b010) => AOp::AmoW(AAmoW::Xor),
+                    (0b00100, 0b011) => AOp::AmoD(AAmoD::Xor),
+                    (0b10100, 0b010) => AOp::AmoW(AAmoW::Max),
+                    (0b10100, 0b011) => AOp::AmoD(AAmoD::Max),
+                    (0b10000, 0b010) => AOp::AmoW(AAmoW::Min),
+                    (0b10000, 0b011) => AOp::AmoD(AAmoD::Min),
+                    (0b11100, 0b010) => AOp::AmoW(AAmoW::Maxu),
+                    (0b11100, 0b011) => AOp::AmoD(AAmoD::Maxu),
+                    (0b11000, 0b010) => AOp::AmoW(AAmoW::Minu),
+                    (0b11000, 0b011) => AOp::AmoD(AAmoD::Minu),
                     _ => None?,
                 };
-                I::Atomic { instr, aq, rl }
+                let arg = RType::new(instruction);
+                I::Atomic(AtomicInstruction {
+                    instr: arg,
+                    aq,
+                    op,
+                    rl,
+                })
             }
 
             _ => None?,

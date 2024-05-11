@@ -1,26 +1,45 @@
 use super::RType;
 
-pub enum AtomicInstruction {
-    LrW(RType),
-    ScW(RType),
-    AmoSwapW(RType),
-    AmoAddW(RType),
-    AmoXorW(RType),
-    AmoAndW(RType),
-    AmoOrW(RType),
-    AmoMinW(RType),
-    AmoMaxW(RType),
-    AmoMinuW(RType),
-    AmoMaxuW(RType),
-    LrD(RType),
-    ScD(RType),
-    AmoSwapD(RType),
-    AmoAddD(RType),
-    AmoXorD(RType),
-    AmoAndD(RType),
-    AmoOrD(RType),
-    AmoMinD(RType),
-    AmoMaxD(RType),
-    AmoMinuD(RType),
-    AmoMaxuD(RType),
+pub enum AMem {
+    LrW,
+    ScW,
+    LrD,
+    ScD,
+}
+
+pub enum AAmoW {
+    Swap,
+    Add,
+    Xor,
+    And,
+    Or,
+    Min,
+    Max,
+    Minu,
+    Maxu,
+}
+
+pub enum AAmoD {
+    Swap,
+    Add,
+    Xor,
+    And,
+    Or,
+    Min,
+    Max,
+    Minu,
+    Maxu,
+}
+
+pub enum AOp {
+    Mem(AMem),
+    AmoW(AAmoW),
+    AmoD(AAmoD),
+}
+
+pub struct AtomicInstruction {
+    pub aq: bool,
+    pub rl: bool,
+    pub op: AOp,
+    pub instr: RType,
 }
