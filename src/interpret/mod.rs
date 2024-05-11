@@ -15,7 +15,7 @@ impl Emulator {
             Instruction::Machine(instr) => self.execute_machine(instr),
             Instruction::Zicsr(instr) => self.execute_zicsr(instr),
             Instruction::Mul(instr) => self.execute_mul(instr),
-            Instruction::Atomic { instr, aq, rl } => self.execute_atomic(instr, aq, rl),
+            Instruction::Atomic(instr) => self.execute_atomic(instr),
         }
     }
 }
