@@ -37,16 +37,14 @@ impl Emulator {
                 0xC00 if self.mcounteren & 1 != 0 => Some(self.mcycle),
                 0xC01 if self.mcounteren & 2 != 0 => Some(self.mtime),
                 0xC02 if self.mcounteren & 4 != 0 => Some(self.minstret),
-                0xC03..=0xC1F if self.mcounteren & 1 << csr - 0xC00 != 0 => Some(self.minstret),
+                0xC03..=0xC1F if self.mcounteren & 1 << (csr - 0xC00) != 0 => Some(self.minstret),
                 _ => None,
             };
             if val.is_some() {
                 return val;
             }
         }
-        match csr {
-            _ => None,
-        }
+        None
     }
 
     pub fn set_csr(&mut self, csr: u32, val: u64, write: bool) {
@@ -126,8 +124,6 @@ impl Emulator {
                 _ => (),
             }
         }
-        match csr {
-            _ => self.illegal_instruction(),
-        }
+        self.illegal_instruction();
     }
 }

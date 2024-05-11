@@ -49,7 +49,7 @@ impl Emulator {
                     BLoad::Hu => self.read_u16(addr) as u64,
                     BLoad::W => self.read_u32(addr) as i32 as i64 as u64,
                     BLoad::Wu => self.read_u32(addr) as u64,
-                    BLoad::D => self.read_u64(addr) as u64,
+                    BLoad::D => self.read_u64(addr),
                 };
             }
             BaseInstruction::Store(op, i) => {
