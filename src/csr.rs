@@ -125,8 +125,6 @@ impl Emulator {
             }
             return;
         }
-        match csr {
-            _ => self.illegal_instruction(),
-        }
+        self.illegal_instruction();
     }
 }

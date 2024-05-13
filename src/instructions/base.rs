@@ -79,6 +79,6 @@ pub enum BaseInstruction {
     Reg64(BRegister64, RType),
     Reg32(BRegister32, RType),
     Fence(u32),
-    Ecall(u32),
-    Ebreak(u32),
+    Ecall,
+    Ebreak,
 }

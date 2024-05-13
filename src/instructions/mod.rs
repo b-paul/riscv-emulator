@@ -56,6 +56,22 @@ impl RType {
             rs2: (instruction >> 20 & 0x1f) as usize,
         }
     }
+
+    fn cr(instruction: u16) -> Self {
+        RType {
+            rd: (instruction >> 7 & 0x1f) as usize,
+            rs1: (instruction >> 7 & 0x1f) as usize,
+            rs2: (instruction >> 2 & 0x1f) as usize,
+        }
+    }
+
+    fn ca(instruction: u16) -> Self {
+        RType {
+            rd: (instruction >> 7 & 7) as usize + 8,
+            rs1: (instruction >> 7 & 7) as usize + 8,
+            rs2: (instruction >> 2 & 7) as usize + 8,
+        }
+    }
 }
 
 impl IType {
@@ -66,6 +82,46 @@ impl IType {
             imm: (instruction >> 20) as u16,
         }
     }
+
+    fn ci(instruction: u16, imm: u16) -> Self {
+        IType {
+            rd: (instruction >> 7 & 0x1f) as usize,
+            rs1: (instruction >> 7 & 0x1f) as usize,
+            imm,
+        }
+    }
+
+    fn cis(instruction: u16, imm: u16) -> Self {
+        IType {
+            rd: (instruction >> 7 & 0x1f) as usize,
+            rs1: 2,
+            imm,
+        }
+    }
+
+    fn ciw(instruction: u16, imm: u16) -> Self {
+        IType {
+            rd: (instruction >> 2 & 7) as usize + 8,
+            rs1: 2,
+            imm,
+        }
+    }
+
+    fn cl(instruction: u16, imm: u16) -> Self {
+        IType {
+            rd: (instruction >> 2 & 7) as usize + 8,
+            rs1: (instruction >> 7 & 7) as usize + 8,
+            imm,
+        }
+    }
+
+    fn cb(instruction: u16) -> Self {
+        IType {
+            rd: (instruction >> 7 & 7) as usize + 8,
+            rs1: (instruction >> 7 & 7) as usize + 8,
+            imm: (instruction >> 2 & 0x1f | instruction >> 7 & 0x20),
+        }
+    }
 }
 
 impl SType {
@@ -74,6 +130,22 @@ impl SType {
             rs1: (instruction >> 15 & 0x1f) as usize,
             rs2: (instruction >> 20 & 0x1f) as usize,
             imm: (instruction >> 20 | instruction >> 7 & 0x1f) as u16,
+        }
+    }
+
+    fn css(instruction: u16, imm: u16) -> Self {
+        SType {
+            rs1: 2,
+            rs2: (instruction >> 2 & 0x1f) as usize,
+            imm,
+        }
+    }
+
+    fn cs(instruction: u16, imm: u16) -> Self {
+        SType {
+            rs1: (instruction >> 2 & 7) as usize + 8,
+            rs2: (instruction >> 7 & 7) as usize + 8,
+            imm,
         }
     }
 }
@@ -89,6 +161,18 @@ impl BType {
                 | instruction >> 19 & 0x1000) as u16,
         }
     }
+
+    fn cb(instruction: u16) -> Self {
+        BType {
+            rs1: (instruction >> 7 & 7) as usize + 8,
+            rs2: 0,
+            imm: (instruction >> 2 & 0x6
+                | instruction >> 7 & 0x18
+                | instruction << 3 & 0x20
+                | instruction << 1 & 0xc0
+                | instruction >> 4 & 0x100),
+        }
+    }
 }
 
 impl UType {
@@ -96,6 +180,13 @@ impl UType {
         UType {
             rd: (instruction >> 7 & 0x1f) as usize,
             imm: (instruction & 0xfffff000) as i32,
+        }
+    }
+
+    fn ci(instruction: u16, imm: i32) -> Self {
+        UType {
+            rd: (instruction >> 7 & 0x1f) as usize,
+            imm,
         }
     }
 }
@@ -110,6 +201,20 @@ impl JType {
                 | instruction >> 11 & 0x10000) as i32,
         }
     }
+
+    fn cj(instruction: u16, rd: usize) -> Self {
+        JType {
+            rd,
+            imm: (instruction >> 2 & 0x6
+                | instruction >> 7 & 0x10
+                | instruction << 3 & 0x20
+                | instruction >> 1 & 0x40
+                | instruction << 1 & 0x80
+                | instruction >> 1 & 0x300
+                | instruction << 2 & 0x400
+                | instruction >> 1 & 0x800) as i16 as i32,
+        }
+    }
 }
 
 pub enum Instruction {
@@ -121,12 +226,292 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn parse(instruction: u32) -> Option<Instruction> {
-        if instruction & 0b11 != 0b11 {
-            //todo!("16 bit instructions!")
+    pub fn parse_compressed(instruction: u16) -> Option<Instruction> {
+        let opcode = instruction & 0x3;
+        let funct3 = (instruction >> 13) & 0x7;
+
+        if instruction == 0 {
             return None;
         }
 
+        match opcode {
+            0b00 => {
+                match funct3 {
+                    0b010 => Some(Instruction::Base(BaseInstruction::Load(
+                        BLoad::W,
+                        IType::cl(
+                            instruction,
+                            instruction >> 4 & 0x4
+                                | instruction >> 7 & 0x38
+                                | instruction << 1 & 0x40,
+                        ),
+                    ))),
+                    0b011 => Some(Instruction::Base(BaseInstruction::Load(
+                        BLoad::D,
+                        IType::cl(
+                            instruction,
+                            instruction >> 7 & 0x38 | instruction << 1 & 0xc0,
+                        ),
+                    ))),
+                    0b110 => Some(Instruction::Base(BaseInstruction::Store(
+                        BStore::W,
+                        SType::cs(
+                            instruction,
+                            instruction >> 4 & 0x4
+                                | instruction >> 7 & 0x38
+                                | instruction << 1 & 0x40,
+                        ),
+                    ))),
+                    0b111 => Some(Instruction::Base(BaseInstruction::Store(
+                        BStore::W,
+                        SType::cs(
+                            instruction,
+                            instruction >> 7 & 0x38 | instruction << 1 & 0xc0,
+                        ),
+                    ))),
+                    // C.ADDI4SPN
+                    0b000 => Some(Instruction::Base(BaseInstruction::Imm64(
+                        BImmediate64::Add,
+                        IType::ciw(
+                            instruction,
+                            instruction >> 4 & 0x4
+                                | instruction >> 2 & 0x8
+                                | instruction >> 7 & 0x30
+                                | instruction >> 1 & 0x3c0,
+                        ),
+                    ))),
+                    _ => None,
+                }
+            }
+
+            0b01 => {
+                match funct3 {
+                    // C.J
+                    0b101 => Some(Instruction::Base(BaseInstruction::Jal(JType::cj(
+                        instruction,
+                        0,
+                    )))),
+                    0b110 => Some(Instruction::Base(BaseInstruction::Branch(
+                        Branch::Eq,
+                        BType::cb(instruction),
+                    ))),
+                    0b111 => Some(Instruction::Base(BaseInstruction::Branch(
+                        Branch::Ne,
+                        BType::cb(instruction),
+                    ))),
+                    // C.LI
+                    0b010 => Some(Instruction::Base(BaseInstruction::Imm64(
+                        BImmediate64::Add,
+                        IType::ci(
+                            instruction,
+                            (((instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as i16) << 10
+                                >> 10) as u16,
+                        ),
+                    ))),
+                    0b011 => {
+                        let rd = (instruction >> 7 & 0x1f) as usize;
+                        // C.ADDI16SP
+                        if rd == 2 {
+                            // We know that rd == 2, so we can just parse the instruction like
+                            // normal
+                            Some(Instruction::Base(BaseInstruction::Imm64(
+                                BImmediate64::Add,
+                                IType::ci(
+                                    instruction,
+                                    (((instruction >> 2 & 0x10
+                                        | instruction << 3 & 0x20
+                                        | instruction << 1 & 0x40
+                                        | instruction << 4 & 0x180
+                                        | instruction >> 3 & 0x200)
+                                        as i16)
+                                        << 6
+                                        >> 6) as u16,
+                                ),
+                            )))
+                        } else {
+                            // C.LUI
+                            Some(Instruction::Base(BaseInstruction::Lui(UType::ci(
+                                instruction,
+                                ((instruction as i32) << 10 & 0x1f000
+                                    | (instruction as i32) << 5 & 0x20000)
+                                    << 14
+                                    >> 14,
+                            ))))
+                        }
+                    }
+                    // C.ADDI
+                    0b000 => Some(Instruction::Base(BaseInstruction::Imm64(
+                        BImmediate64::Add,
+                        IType::ci(
+                            instruction,
+                            (((instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as i16) << 10
+                                >> 10) as u16,
+                        ),
+                    ))),
+                    // C.ADDIW
+                    0b001 => Some(Instruction::Base(BaseInstruction::Imm32(
+                        BImmediate32::Add,
+                        IType::ci(
+                            instruction,
+                            (((instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as i16) << 10
+                                >> 10) as u16,
+                        ),
+                    ))),
+                    0b100 => {
+                        let funct2 = instruction >> 10 & 0x3;
+                        match funct2 {
+                            0b00 => Some(Instruction::Base(BaseInstruction::Imm64(
+                                BImmediate64::Srl,
+                                IType::cb(instruction),
+                            ))),
+                            0b01 => Some(Instruction::Base(BaseInstruction::Imm64(
+                                BImmediate64::Sra,
+                                IType::cb(instruction),
+                            ))),
+                            0b10 => Some(Instruction::Base(BaseInstruction::Imm64(
+                                BImmediate64::And,
+                                IType::cb(instruction),
+                            ))),
+                            0b11 => {
+                                let funct3 = instruction >> 5 & 0x3 | instruction >> 10 & 0x4;
+                                match funct3 {
+                                    0b011 => Some(Instruction::Base(BaseInstruction::Reg64(
+                                        BRegister64::And,
+                                        RType::cr(instruction),
+                                    ))),
+                                    0b010 => Some(Instruction::Base(BaseInstruction::Reg64(
+                                        BRegister64::Or,
+                                        RType::cr(instruction),
+                                    ))),
+                                    0b001 => Some(Instruction::Base(BaseInstruction::Reg64(
+                                        BRegister64::Xor,
+                                        RType::cr(instruction),
+                                    ))),
+                                    0b000 => Some(Instruction::Base(BaseInstruction::Reg64(
+                                        BRegister64::Sub,
+                                        RType::cr(instruction),
+                                    ))),
+                                    0b101 => Some(Instruction::Base(BaseInstruction::Reg32(
+                                        BRegister32::Add,
+                                        RType::cr(instruction),
+                                    ))),
+                                    0b100 => Some(Instruction::Base(BaseInstruction::Reg32(
+                                        BRegister32::Sub,
+                                        RType::cr(instruction),
+                                    ))),
+                                    _ => None,
+                                }
+                            }
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            }
+
+            0b10 => {
+                match funct3 {
+                    // C.LWSP
+                    0b010 => Some(Instruction::Base(BaseInstruction::Load(
+                        BLoad::W,
+                        IType::cis(
+                            instruction,
+                            instruction >> 2 & 0x1c
+                                | instruction >> 7 & 0x20
+                                | instruction << 4 & 0xc0,
+                        ),
+                    ))),
+                    // C.LDSP
+                    0b011 => Some(Instruction::Base(BaseInstruction::Load(
+                        BLoad::D,
+                        IType::cis(
+                            instruction,
+                            instruction >> 2 & 0x18
+                                | instruction >> 7 & 0x20
+                                | instruction << 4 & 0x1c0,
+                        ),
+                    ))),
+                    // C.SWSP
+                    0b110 => Some(Instruction::Base(BaseInstruction::Store(
+                        BStore::W,
+                        SType::css(
+                            instruction,
+                            instruction >> 7 & 0x3c | instruction >> 1 & 0xc0,
+                        ),
+                    ))),
+                    // C.SDSP
+                    0b111 => Some(Instruction::Base(BaseInstruction::Store(
+                        BStore::D,
+                        SType::css(
+                            instruction,
+                            instruction >> 7 & 0x38 | instruction >> 1 & 0x1c0,
+                        ),
+                    ))),
+                    0b100 => {
+                        let rs1 = (instruction >> 7 & 0x1f) as usize;
+                        let rs2 = (instruction >> 2 & 0x1f) as usize;
+                        let funct4 = (instruction >> 12 & 0x1) == 1;
+                        if rs1 == 0 {
+                            None
+                        } else {
+                            match (rs1 == 0, rs2 == 0, funct4) {
+                                // C.JR
+                                (false, true, false) => {
+                                    Some(Instruction::Base(BaseInstruction::Jalr(IType {
+                                        rd: 0,
+                                        rs1,
+                                        imm: 0,
+                                    })))
+                                }
+                                // C.JALR
+                                (false, true, true) => {
+                                    Some(Instruction::Base(BaseInstruction::Jalr(IType {
+                                        rd: 1,
+                                        rs1,
+                                        imm: 0,
+                                    })))
+                                }
+                                // C.MV
+                                (false, false, false) => {
+                                    Some(Instruction::Base(BaseInstruction::Reg64(
+                                        BRegister64::Add,
+                                        RType {
+                                            rd: rs1,
+                                            rs1: 0,
+                                            rs2,
+                                        },
+                                    )))
+                                }
+                                // C.ADD
+                                (false, false, true) => {
+                                    Some(Instruction::Base(BaseInstruction::Reg64(
+                                        BRegister64::Add,
+                                        RType { rd: rs1, rs1, rs2 },
+                                    )))
+                                }
+                                (true, true, true) => {
+                                    Some(Instruction::Base(BaseInstruction::Ecall))
+                                }
+                                _ => None,
+                            }
+                        }
+                    }
+                    0b000 => Some(Instruction::Base(BaseInstruction::Imm64(
+                        BImmediate64::Sll,
+                        IType::ci(
+                            instruction,
+                            instruction >> 2 & 0x1f | instruction >> 7 & 0x20,
+                        ),
+                    ))),
+                    _ => None,
+                }
+            }
+
+            _ => None,
+        }
+    }
+
+    pub fn parse(instruction: u32) -> Option<Instruction> {
         let opcode = instruction & 0x7f;
         let funct3 = instruction >> 12 & 0x7;
         let funct7 = instruction >> 25 & 0x7f;
@@ -270,8 +655,8 @@ impl Instruction {
             0b1110011 => {
                 if funct3 == 0 {
                     match instruction {
-                        0b00000000000000000000000001110011 => I::Base(B::Ecall(instruction)),
-                        0b00000000000100000000000001110011 => I::Base(B::Ebreak(instruction)),
+                        0b00000000000000000000000001110011 => I::Base(B::Ecall),
+                        0b00000000000100000000000001110011 => I::Base(B::Ebreak),
                         0b00110000001000000000000001110011 => {
                             I::Machine(MA::MRet(IType::new(instruction)))
                         }
