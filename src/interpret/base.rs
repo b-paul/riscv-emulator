@@ -116,14 +116,14 @@ impl Emulator {
                 } as i64 as u64;
             }
             BaseInstruction::Fence(_) => (),
-            BaseInstruction::Ecall(_) => {
+            BaseInstruction::Ecall => {
                 match self.privilege {
                     Privilege::User => self.set_mtrap(8),
                     Privilege::Machine => self.set_mtrap(11),
                 }
                 self.minstret = self.minstret.wrapping_sub(1);
             }
-            BaseInstruction::Ebreak(_) => {
+            BaseInstruction::Ebreak => {
                 self.set_mtrap(3);
                 self.minstret = self.minstret.wrapping_sub(1)
             }

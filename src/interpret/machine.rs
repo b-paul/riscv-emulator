@@ -28,7 +28,7 @@ impl Emulator {
             }
             MachineInstruction::Wfi(_) => {
                 self.waiting = true;
-            },
+            }
         }
     }
 }
