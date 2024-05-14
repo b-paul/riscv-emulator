@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 
 mod csr;
 mod instructions;
@@ -9,7 +9,7 @@ use mem::Memory;
 
 use instructions::Instruction;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Privilege {
     User = 0b00,
     Machine = 0b11,
@@ -127,8 +127,7 @@ impl Emulator {
 
     fn handle_traps(&mut self) {
         if let Some(trap) = self.trap {
-            // Traps by default are handled by M mode, but when S mode is implemented this must be
-            // changed.
+            println!("{trap}");
             self.mepc = self.pc;
             self.mcause = trap;
             self.pc = self.mtvec.wrapping_sub(4);
@@ -139,8 +138,11 @@ impl Emulator {
             self.mstatus = (self.mstatus & !(0x80)) | (self.mstatus & 0x8) << 4;
             // Set MIE to 0
             self.mstatus &= !0x8;
+            // Traps by default are handled by M mode, but when S mode is implemented this must be
+            // changed.
+            self.privilege = Privilege::Machine;
 
-            if trap == 11 {
+            if trap == 8 {
                 println!("Stage {}", self.x[10] / 2);
             }
         }
@@ -152,9 +154,12 @@ impl Emulator {
 
     fn illegal_instruction(&mut self) {
         let mut instruction = self.read_u32(self.pc as usize);
+        let mut parsed = Instruction::parse(instruction);
         if instruction & 3 != 3 {
             instruction &= 0xffff;
+            parsed = Instruction::parse_compressed(instruction as u16);
         }
+        println!("pc {:x}: 0x{instruction:08x} 0b{instruction:032b} {parsed:?}", self.pc);
         // S-MODE maybe this will be an S-mode interrupt or something
         self.set_mtrap(2);
         self.mtval = instruction as u64;
@@ -211,7 +216,7 @@ fn main() {
     let mut computer = Emulator::new(128 * 1024 * 1024);
 
     computer
-        .load_binary("../riscv-tests/isa/rv64uc-p-rvc", 0x1000)
+        .load_binary("../riscv-tests/isa/rv64ui-p-addw", 0x1000)
         .unwrap();
 
     // TODO testing for

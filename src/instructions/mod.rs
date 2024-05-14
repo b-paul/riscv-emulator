@@ -14,35 +14,41 @@ use machine::MachineInstruction;
 use mul::{MReg32, MReg64, MulInstruction};
 use zicsr::{ZOp, ZicsrInstruction};
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RType {
     pub rd: usize,
     pub rs1: usize,
     pub rs2: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IType {
     pub rd: usize,
     pub rs1: usize,
     pub imm: u16,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SType {
     pub rs1: usize,
     pub rs2: usize,
     pub imm: u16,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BType {
     pub rs1: usize,
     pub rs2: usize,
     pub imm: u16,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UType {
     pub rd: usize,
     pub imm: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct JType {
     pub rd: usize,
     pub imm: i32,
@@ -198,7 +204,7 @@ impl JType {
             imm: (instruction >> 20 & 0x7fe
                 | instruction >> 9 & 0x800
                 | instruction & 0xff000
-                | instruction >> 11 & 0x10000) as i32,
+                | instruction >> 11 & 0x100000) as i32,
         }
     }
 
@@ -217,6 +223,7 @@ impl JType {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Instruction {
     Base(BaseInstruction),
     Machine(MachineInstruction),

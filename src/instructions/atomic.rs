@@ -1,5 +1,6 @@
 use super::RType;
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AMem {
     LrW,
     ScW,
@@ -7,6 +8,7 @@ pub enum AMem {
     ScD,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AAmoW {
     Swap,
     Add,
@@ -19,6 +21,7 @@ pub enum AAmoW {
     Maxu,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AAmoD {
     Swap,
     Add,
@@ -31,12 +34,14 @@ pub enum AAmoD {
     Maxu,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AOp {
     Mem(AMem),
     AmoW(AAmoW),
     AmoD(AAmoD),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AtomicInstruction {
     pub aq: bool,
     pub rl: bool,
