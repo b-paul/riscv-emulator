@@ -10,6 +10,8 @@ mod zicsr;
 
 impl Emulator {
     pub fn execute(&mut self, instruction: Instruction) {
+        self.x[0] = 0;
+
         match instruction {
             Instruction::Base(instr) => self.execute_base(instr),
             Instruction::Machine(instr) => self.execute_machine(instr),

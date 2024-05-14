@@ -1,5 +1,6 @@
 use super::RType;
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MReg64 {
     Mul,
     Mulh,
@@ -11,6 +12,7 @@ pub enum MReg64 {
     Remu,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MReg32 {
     Mul,
     Div,
@@ -19,6 +21,7 @@ pub enum MReg32 {
     Remu,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MulInstruction {
     Reg64(MReg64, RType),
     Reg32(MReg32, RType),

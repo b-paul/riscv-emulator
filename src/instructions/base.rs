@@ -1,5 +1,6 @@
 use super::{BType, IType, JType, RType, SType, UType};
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Branch {
     Eq,
     Ne,
@@ -9,6 +10,7 @@ pub enum Branch {
     Geu,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BLoad {
     B,
     H,
@@ -19,6 +21,7 @@ pub enum BLoad {
     Hu,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BStore {
     B,
     H,
@@ -26,6 +29,7 @@ pub enum BStore {
     D,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BImmediate64 {
     Add,
     Slt,
@@ -38,6 +42,7 @@ pub enum BImmediate64 {
     Sra,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BImmediate32 {
     Add,
     Sll,
@@ -45,6 +50,7 @@ pub enum BImmediate32 {
     Sra,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BRegister64 {
     Add,
     Sub,
@@ -58,6 +64,7 @@ pub enum BRegister64 {
     Sra,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BRegister32 {
     Add,
     Sub,
@@ -66,6 +73,7 @@ pub enum BRegister32 {
     Sra,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BaseInstruction {
     Lui(UType),
     Auipc(UType),

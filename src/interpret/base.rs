@@ -8,13 +8,13 @@ use crate::{
 
 impl Emulator {
     pub fn execute_base(&mut self, instruction: BaseInstruction) {
-        if self.misa & 1 << 8 != 0 {
+        if self.misa & 1 << 8 == 0 {
             self.illegal_instruction();
             return;
         }
         match instruction {
-            BaseInstruction::Lui(i) => self.x[i.rd] = (i.imm << 20 >> 20) as u64,
-            BaseInstruction::Auipc(i) => self.x[i.rd] = self.pc + (i.imm << 20 >> 20) as u64,
+            BaseInstruction::Lui(i) => self.x[i.rd] = i.imm as i64 as u64,
+            BaseInstruction::Auipc(i) => self.x[i.rd] = self.pc.wrapping_add(i.imm as i64 as u64),
             BaseInstruction::Jal(i) => {
                 let offset = (i.imm << 12 >> 11) as i64;
                 self.x[i.rd] = self.pc.wrapping_add(4);
@@ -27,7 +27,7 @@ impl Emulator {
                 self.pc = tmp.wrapping_add(offset).wrapping_sub(4);
             }
             BaseInstruction::Branch(branch, i) => {
-                let offset = ((i.imm as i32) << 20 >> 19) as u64;
+                let offset = ((i.imm as i32) << 19 >> 19) as u64;
                 let taken = match branch {
                     Branch::Eq => self.x[i.rs1] == self.x[i.rs2],
                     Branch::Ne => self.x[i.rs1] != self.x[i.rs2],
@@ -64,7 +64,7 @@ impl Emulator {
                 }
             }
             BaseInstruction::Imm64(op, i) => {
-                let imm = ((i.imm as i64) << 32 >> 52) as u64;
+                let imm = ((i.imm as i64) << 52 >> 52) as u64;
                 let val = self.x[i.rs1];
                 self.x[i.rd] = match op {
                     BImmediate64::Add => val.wrapping_add(imm),
@@ -82,7 +82,7 @@ impl Emulator {
                 let imm = i.imm as u32;
                 let val = self.x[i.rs1] as u32;
                 self.x[i.rd] = match op {
-                    BImmediate32::Add => val.wrapping_add(imm),
+                    BImmediate32::Add => val.wrapping_add(((imm as i32) << 20 >> 20) as u32),
                     BImmediate32::Sll => val.wrapping_shl(imm),
                     BImmediate32::Srl => val.wrapping_shr(imm),
                     BImmediate32::Sra => (val as i32).wrapping_shr(imm) as u32,
