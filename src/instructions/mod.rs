@@ -135,7 +135,7 @@ impl SType {
         SType {
             rs1: (instruction >> 15 & 0x1f) as usize,
             rs2: (instruction >> 20 & 0x1f) as usize,
-            imm: (instruction >> 20 | instruction >> 7 & 0x1f) as u16,
+            imm: (instruction >> 20 & 0xfe0 | instruction >> 7 & 0x1f) as u16,
         }
     }
 

@@ -35,6 +35,14 @@ impl Memory {
 
 impl Emulator {
     pub fn read_bytes<const COUNT: usize>(&self, addr: usize) -> [u8; COUNT] {
+        /* TODO this needs to be dynamic i think oh god
+        if let Some((idx, reg)) = self.device_map.get(&addr) {
+            if !reg.access_type.can_read() {
+                todo!()
+            }
+            self.devices[*idx].write_bytes(addr, bytes);
+        }
+        */
         match addr {
             // CLINT
             0x2000000..=0x200BFFF => match addr - 0x2000000 {
@@ -70,6 +78,14 @@ impl Emulator {
     }
 
     pub fn write_bytes(&mut self, addr: usize, bytes: &[u8]) {
+        if let Some((idx, reg)) = self.device_map.get(&addr) {
+            if !reg.access_type.can_write() {
+                todo!()
+            }
+            self.devices[*idx].write_bytes(addr, bytes);
+            return;
+        }
+
         match addr {
             // CLINT
             0x2000000..=0x200BFFF => {

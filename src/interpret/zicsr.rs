@@ -9,14 +9,15 @@ impl Emulator {
         let write = op == ZOp::Csrrw || i.rs1 != 0;
         let read = !(op == ZOp::Csrrw && i.rs1 == 0);
 
-        if let Some(csr) = self.get_csr(i.imm as u32, read) {
+        if let Some(csr_val) = self.get_csr(i.imm as u32, read) {
             let val = match op {
                 ZOp::Csrrw => val,
-                ZOp::Csrrs => csr | val,
-                ZOp::Csrrc => csr & !val,
+                ZOp::Csrrs => csr_val | val,
+                ZOp::Csrrc => csr_val & !val,
             };
             // This throws illegal_instruction when needed
             self.set_csr(i.imm as u32, val, write);
+            self.x[i.rd] = csr_val;
         } else {
             self.illegal_instruction();
         }

@@ -1,11 +1,16 @@
 use std::io::Read;
 use std::sync::atomic::AtomicUsize;
+use std::collections::BTreeMap;
 
 mod csr;
+mod device;
 mod instructions;
 mod interpret;
 mod mem;
+mod tester;
+
 use mem::Memory;
+use device::{Device, DeviceRegister};
 
 use instructions::Instruction;
 
@@ -78,6 +83,9 @@ struct Emulator {
     // 10 : Double word reservation
     // 11 : unused
     reservation: AtomicUsize,
+
+    devices: Vec<Box<dyn Device>>,
+    device_map: BTreeMap<usize, (usize, DeviceRegister)>,
 }
 
 impl Emulator {
@@ -113,6 +121,9 @@ impl Emulator {
             pc: 0,
 
             reservation: AtomicUsize::new(0),
+
+            devices: Vec::new(),
+            device_map: BTreeMap::new(),
         }
     }
 
@@ -125,9 +136,17 @@ impl Emulator {
         Ok(())
     }
 
+    fn add_device(&mut self, device: Box<dyn Device>) {
+        let idx = self.devices.len();
+        for register in device.get_registers() {
+            self.device_map.insert(register.addr, (idx, register));
+        }
+
+        self.devices.push(device);
+    }
+
     fn handle_traps(&mut self) {
         if let Some(trap) = self.trap {
-            println!("{trap}");
             self.mepc = self.pc;
             self.mcause = trap;
             self.pc = self.mtvec.wrapping_sub(4);
@@ -141,10 +160,6 @@ impl Emulator {
             // Traps by default are handled by M mode, but when S mode is implemented this must be
             // changed.
             self.privilege = Privilege::Machine;
-
-            if trap == 8 {
-                println!("Stage {}", self.x[10] / 2);
-            }
         }
     }
 
@@ -213,16 +228,20 @@ impl Emulator {
 }
 
 fn main() {
-    let mut computer = Emulator::new(128 * 1024 * 1024);
+    let mut emu = Emulator::new(128 * 1024 * 1024);
 
-    computer
-        .load_binary("../riscv-tests/isa/rv64ui-p-addw", 0x1000)
+    let tester = tester::Tester::new(0x2000);
+
+    emu
+        .load_binary("../riscv-tests/isa/rv64ui-p-addi", 0x1000)
         .unwrap();
+
+    emu.add_device(Box::new(tester) as Box<dyn Device>);
 
     // TODO testing for
     // - Zicsr
 
     loop {
-        computer.cycle();
+        emu.cycle();
     }
 }
