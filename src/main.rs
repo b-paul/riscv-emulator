@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 mod csr;
 mod device;
+mod elf;
 mod instructions;
 mod interpret;
 mod mem;
