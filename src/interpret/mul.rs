@@ -73,7 +73,7 @@ impl Emulator {
                         if b == 0 {
                             u64::MAX
                         } else {
-                            a.wrapping_div(b) as i64 as u64
+                            (a as u32).wrapping_div(b as u32) as i32 as i64 as u64
                         }
                     }
                     MReg32::Rem => {
@@ -89,7 +89,7 @@ impl Emulator {
                         if b == 0 {
                             a as i64 as u64
                         } else {
-                            a.wrapping_rem(b) as i64 as u64
+                            (a as u32).wrapping_rem(b as u32) as i32 as i64 as u64
                         }
                     }
                 };
