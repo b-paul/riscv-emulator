@@ -218,23 +218,37 @@ impl Emulator {
 }
 
 fn main() {
-    let mut emu = Emulator::new(128 * 1024 * 1024);
+    let path = std::env::args().nth(1).unwrap();
 
-    let tester = Rc::new(RefCell::new(tester::Tester::new(0x2000)));
+    for entry in std::fs::read_dir(path).unwrap() {
+        if let Ok(entry) = entry {
+            let name = entry.file_name();
+            let name = name.to_str().unwrap();
 
-    emu.load_binary("../riscv-tests/isa/rv64ui-p-addi", 0x1000)
-        .unwrap();
+            if !name.starts_with("rv64ui-p-") || name.ends_with(".dump") {
+                continue;
+            }
 
-    emu.add_device(tester.clone() as Rc<RefCell<dyn Device>>);
+            let path = entry.path();
+            let path = path.to_str().unwrap();
 
-    // TODO testing for
-    // - Zicsr
+            println!("{name}: ");
 
-    loop {
-        emu.cycle();
-        if let Some(code) = tester.borrow().get_exit_code() {
-            println!("Exit code {code}");
-            std::process::exit(code as i32);
+            let mut emu = Emulator::new(128 * 1024 * 1024);
+
+            let tester = Rc::new(RefCell::new(tester::Tester::new(0x2000)));
+
+            emu.load_binary(&path, 0x1000).unwrap();
+
+            emu.add_device(tester.clone() as Rc<RefCell<dyn Device>>);
+
+            loop {
+                emu.cycle();
+                if let Some(code) = tester.borrow().get_exit_code() {
+                    println!("{code}");
+                    break;
+                }
+            }
         }
     }
 }
