@@ -82,7 +82,7 @@ impl Emulator {
             if !reg.access_type.can_write() {
                 todo!()
             }
-            self.devices[*idx].write_bytes(addr, bytes);
+            self.devices[*idx].borrow_mut().write_bytes(addr, bytes);
             return;
         }
 
