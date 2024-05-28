@@ -609,10 +609,10 @@ impl Instruction {
 
             0b0111011 => match (funct3, funct7) {
                 (0b000, 0b0000000) => I::Base(B::Reg32(BReg32::Add, RType::new(instruction))),
-                (0b000, 0b0100000) => I::Base(B::Reg32(BReg32::Add, RType::new(instruction))),
-                (0b001, 0b0000000) => I::Base(B::Reg32(BReg32::Add, RType::new(instruction))),
-                (0b101, 0b0000000) => I::Base(B::Reg32(BReg32::Add, RType::new(instruction))),
-                (0b101, 0b0100000) => I::Base(B::Reg32(BReg32::Add, RType::new(instruction))),
+                (0b000, 0b0100000) => I::Base(B::Reg32(BReg32::Sub, RType::new(instruction))),
+                (0b001, 0b0000000) => I::Base(B::Reg32(BReg32::Sll, RType::new(instruction))),
+                (0b101, 0b0000000) => I::Base(B::Reg32(BReg32::Srl, RType::new(instruction))),
+                (0b101, 0b0100000) => I::Base(B::Reg32(BReg32::Sra, RType::new(instruction))),
                 (0b000, 0b0000001) => I::Mul(M::Reg32(MReg32::Mul, RType::new(instruction))),
                 (0b100, 0b0000001) => I::Mul(M::Reg32(MReg32::Div, RType::new(instruction))),
                 (0b101, 0b0000001) => I::Mul(M::Reg32(MReg32::Divu, RType::new(instruction))),
