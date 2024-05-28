@@ -1,6 +1,8 @@
-use std::io::Read;
-use std::sync::atomic::AtomicUsize;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::io::Read;
+use std::rc::Rc;
+use std::sync::atomic::AtomicUsize;
 
 mod csr;
 mod device;
@@ -9,8 +11,8 @@ mod interpret;
 mod mem;
 mod tester;
 
-use mem::Memory;
 use device::{Device, DeviceRegister};
+use mem::Memory;
 
 use instructions::Instruction;
 
@@ -84,7 +86,7 @@ struct Emulator {
     // 11 : unused
     reservation: AtomicUsize,
 
-    devices: Vec<Box<dyn Device>>,
+    devices: Vec<Rc<RefCell<dyn Device>>>,
     device_map: BTreeMap<usize, (usize, DeviceRegister)>,
 }
 
@@ -136,9 +138,9 @@ impl Emulator {
         Ok(())
     }
 
-    fn add_device(&mut self, device: Box<dyn Device>) {
+    fn add_device(&mut self, device: Rc<RefCell<dyn Device>>) {
         let idx = self.devices.len();
-        for register in device.get_registers() {
+        for register in device.borrow().get_registers() {
             self.device_map.insert(register.addr, (idx, register));
         }
 
@@ -169,12 +171,9 @@ impl Emulator {
 
     fn illegal_instruction(&mut self) {
         let mut instruction = self.read_u32(self.pc as usize);
-        let mut parsed = Instruction::parse(instruction);
         if instruction & 3 != 3 {
             instruction &= 0xffff;
-            parsed = Instruction::parse_compressed(instruction as u16);
         }
-        println!("pc {:x}: 0x{instruction:08x} 0b{instruction:032b} {parsed:?}", self.pc);
         // S-MODE maybe this will be an S-mode interrupt or something
         self.set_mtrap(2);
         self.mtval = instruction as u64;
@@ -195,12 +194,8 @@ impl Emulator {
             let instruction = self.read_u32(self.pc as usize);
 
             match Instruction::parse(instruction) {
-                Some(instruction) => {
-                    self.execute(instruction)
-                },
-                None => {
-                    self.illegal_instruction()
-                },
+                Some(instruction) => self.execute(instruction),
+                None => self.illegal_instruction(),
             }
             self.increment_counters();
 
@@ -209,12 +204,8 @@ impl Emulator {
             self.pc = self.pc.wrapping_add(4);
         } else {
             match Instruction::parse_compressed(instruction) {
-                Some(instruction) => {
-                    self.execute(instruction)
-                },
-                None => {
-                    self.illegal_instruction()
-                },
+                Some(instruction) => self.execute(instruction),
+                None => self.illegal_instruction(),
             }
 
             self.pc = self.pc.wrapping_add(2);
@@ -224,24 +215,26 @@ impl Emulator {
             self.handle_traps();
         }
     }
-
 }
 
 fn main() {
     let mut emu = Emulator::new(128 * 1024 * 1024);
 
-    let tester = tester::Tester::new(0x2000);
+    let tester = Rc::new(RefCell::new(tester::Tester::new(0x2000)));
 
-    emu
-        .load_binary("../riscv-tests/isa/rv64ui-p-addi", 0x1000)
+    emu.load_binary("../riscv-tests/isa/rv64ui-p-addi", 0x1000)
         .unwrap();
 
-    emu.add_device(Box::new(tester) as Box<dyn Device>);
+    emu.add_device(tester.clone() as Rc<RefCell<dyn Device>>);
 
     // TODO testing for
     // - Zicsr
 
     loop {
         emu.cycle();
+        if let Some(code) = tester.borrow().get_exit_code() {
+            println!("Exit code {code}");
+            std::process::exit(code as i32);
+        }
     }
 }

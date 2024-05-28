@@ -1,6 +1,6 @@
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AccessType {
-    Write
+    Write,
 }
 
 impl AccessType {
@@ -29,6 +29,6 @@ pub trait Device {
     /// Returns the list of registers for this device.
     fn get_registers(&self) -> Vec<DeviceRegister>;
 
-    fn read_bytes(&self, addr: usize, size: usize) -> Vec<u8>;
-    fn write_bytes(&self, addr: usize, bytes: &[u8]);
+    fn read_bytes(&mut self, addr: usize, size: usize) -> Vec<u8>;
+    fn write_bytes(&mut self, addr: usize, bytes: &[u8]);
 }
