@@ -232,11 +232,15 @@ fn main() {
             let path = entry.path();
             let path = path.to_str().unwrap();
 
-            println!("{name}: ");
-
             let mut emu = Emulator::new(128 * 1024 * 1024);
 
-            let tester = Rc::new(RefCell::new(tester::Tester::new(0x2000)));
+            let tester_addr = if name == "rv64ui-p-ma_data" {
+                0x3000
+            } else {
+                0x2000
+            };
+
+            let tester = Rc::new(RefCell::new(tester::Tester::new(tester_addr)));
 
             emu.load_binary(&path, 0x1000).unwrap();
 
@@ -245,7 +249,10 @@ fn main() {
             loop {
                 emu.cycle();
                 if let Some(code) = tester.borrow().get_exit_code() {
-                    println!("{code}");
+                    println!("{name}: {code}");
+                    if code != 0 {
+                        std::process::exit(code as i32);
+                    }
                     break;
                 }
             }

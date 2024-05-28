@@ -16,7 +16,7 @@ impl Emulator {
             BaseInstruction::Lui(i) => self.x[i.rd] = i.imm as i64 as u64,
             BaseInstruction::Auipc(i) => self.x[i.rd] = self.pc.wrapping_add(i.imm as i64 as u64),
             BaseInstruction::Jal(i) => {
-                let offset = (i.imm << 12 >> 11) as i64;
+                let offset = (i.imm << 12 >> 12) as i64;
                 self.x[i.rd] = self.pc.wrapping_add(4);
                 self.pc = self.pc.wrapping_add(offset as u64).wrapping_sub(4);
             }
@@ -41,7 +41,8 @@ impl Emulator {
                 }
             }
             BaseInstruction::Load(op, i) => {
-                let addr = self.x[i.rs1].wrapping_add(i.imm as u64) as usize;
+                let offset = ((i.imm as i64) << 52 >> 52) as u64;
+                let addr = self.x[i.rs1].wrapping_add(offset) as usize;
                 self.x[i.rd] = match op {
                     BLoad::B => self.read_u8(addr) as i8 as i64 as u64,
                     BLoad::Bu => self.read_u8(addr) as u64,
@@ -111,8 +112,8 @@ impl Emulator {
                     BRegister32::Add => a.wrapping_add(b),
                     BRegister32::Sub => a.wrapping_sub(b),
                     BRegister32::Sll => a.wrapping_shl((b & 0x1f) as u32),
-                    BRegister32::Srl => (a as u32).wrapping_shl((b & 0x1f) as u32) as i32,
-                    BRegister32::Sra => a.wrapping_shl((b & 0x1f) as u32),
+                    BRegister32::Srl => (a as u32).wrapping_shr((b & 0x1f) as u32) as i32,
+                    BRegister32::Sra => a.wrapping_shr((b & 0x1f) as u32),
                 } as i64 as u64;
             }
             BaseInstruction::Fence(_) => (),
