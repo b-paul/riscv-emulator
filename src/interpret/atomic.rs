@@ -18,7 +18,7 @@ impl Emulator {
             self.illegal_instruction();
             return;
         }
-        let addr = instr.rs1;
+        let addr = self.x[instr.rs1] as usize;
         match op {
             AOp::Mem(op) => match op {
                 AMem::LrW => {
@@ -29,7 +29,7 @@ impl Emulator {
 
                     self.reservation.store(addr | 0b01, Ordering::Relaxed);
                 }
-                AMem::ScW => {
+                AMem::LrD => {
                     if instr.rs2 != 0 {
                         self.illegal_instruction();
                     }
@@ -37,7 +37,7 @@ impl Emulator {
 
                     self.reservation.store(addr | 0b10, Ordering::Relaxed);
                 }
-                AMem::LrD => {
+                AMem::ScW => {
                     if self.reservation.load(Ordering::Acquire) == addr | 0b01 {
                         self.write_u32(addr, self.x[instr.rs2] as u32);
                         self.reservation.store(0, Ordering::Release);
@@ -70,7 +70,7 @@ impl Emulator {
                     AAmoW::Minu => inp.min(inp2),
                     AAmoW::Maxu => inp.max(inp2),
                 };
-                self.x[instr.rd] = inp as i64 as u64;
+                self.x[instr.rd] = inp as i32 as i64 as u64;
                 self.write_u32(addr, out);
             }
             AOp::AmoD(op) => {

@@ -225,7 +225,7 @@ fn main() {
             let name = entry.file_name();
             let name = name.to_str().unwrap();
 
-            if !name.starts_with("rv64ui-p-") || name.ends_with(".dump") {
+            if !name.starts_with("rv64mi-p-") || name.ends_with(".dump") {
                 continue;
             }
 
