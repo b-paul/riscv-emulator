@@ -1,4 +1,5 @@
 use crate::Emulator;
+use std::borrow::Cow;
 
 pub struct Memory {
     bytes: Box<[u8]>,
@@ -33,22 +34,8 @@ pub enum AccessFault {
     Store,
 }
 
-pub enum ReadBuffer<'a> {
-    Memory(&'a [u8]),
-    Device(Vec<u8>),
-}
-
-impl ReadBuffer<'_> {
-    fn to_slice(&self) -> &[u8] {
-        match self {
-            ReadBuffer::Memory(b) => b,
-            ReadBuffer::Device(v) => v,
-        }
-    }
-}
-
 impl Emulator {
-    pub fn read_bytes(&self, addr: usize, count: usize) -> Result<ReadBuffer<'_>, AccessFault> {
+    pub fn read_bytes(&self, addr: usize, count: usize) -> Result<Cow<'_, [u8]>, AccessFault> {
         if let Some((idx, reg)) = self.device_map.get(&addr) {
             if !reg.access_type.can_read() {
                 return Err(AccessFault::Load);
@@ -57,7 +44,7 @@ impl Emulator {
                 .borrow_mut()
                 .read_bytes(addr, count)
                 .to_vec();
-            Ok(ReadBuffer::Device(bytes))
+            Ok(Cow::from(bytes))
         } else {
             match addr {
                 // CLINT
@@ -65,32 +52,29 @@ impl Emulator {
                     0x0 => todo!("msip"),
                     _ => todo!("Slave bus error on invalid access or misaligned read"),
                 },
-                _ => Ok(ReadBuffer::Memory(self.memory.read_bytes(addr, count)?)),
+                _ => Ok(Cow::from(self.memory.read_bytes(addr, count)?)),
             }
         }
     }
 
     pub fn read_u8(&self, addr: usize) -> Result<u8, AccessFault> {
         let bytes = self.read_bytes(addr, 1)?;
-        let bytes = bytes.to_slice();
         let mut buf = [0; 1];
-        buf.copy_from_slice(bytes);
+        buf.copy_from_slice(&bytes);
         Ok(u8::from_le_bytes(buf))
     }
 
     pub fn read_u16(&self, addr: usize) -> Result<u16, AccessFault> {
         let bytes = self.read_bytes(addr, 2)?;
-        let bytes = bytes.to_slice();
         let mut buf = [0; 2];
-        buf.copy_from_slice(bytes);
+        buf.copy_from_slice(&bytes);
         Ok(u16::from_le_bytes(buf))
     }
 
     pub fn read_u32(&self, addr: usize) -> Result<u32, AccessFault> {
         let bytes = self.read_bytes(addr, 4)?;
-        let bytes = bytes.to_slice();
         let mut buf = [0; 4];
-        buf.copy_from_slice(bytes);
+        buf.copy_from_slice(&bytes);
         Ok(u32::from_le_bytes(buf))
     }
 
@@ -104,9 +88,8 @@ impl Emulator {
             },
             _ => {
                 let bytes = self.read_bytes(addr, 8)?;
-                let bytes = bytes.to_slice();
                 let mut buf = [0; 8];
-                buf.copy_from_slice(bytes);
+                buf.copy_from_slice(&bytes);
                 Ok(u64::from_le_bytes(buf))
             }
         }
