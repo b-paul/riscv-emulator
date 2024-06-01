@@ -133,7 +133,7 @@ impl Emulator {
         let mut file = std::fs::File::open(file_name)?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
-        self.memory.write_bytes(0, &buf);
+        self.memory.write_bytes(0, &buf).unwrap();
         self.pc = entry_point;
         Ok(())
     }
@@ -151,7 +151,7 @@ impl Emulator {
         if let Some(trap) = self.trap {
             self.mepc = self.pc;
             self.mcause = trap;
-            self.pc = self.mtvec.wrapping_sub(4);
+            self.pc = self.mtvec;
             self.trap = None;
             // set MPP to the current privilege level;
             self.mstatus = (self.mstatus & !(3 << 11)) | u64::from(self.privilege) << 11;
@@ -170,7 +170,12 @@ impl Emulator {
     }
 
     fn illegal_instruction(&mut self) {
-        let mut instruction = self.read_u32(self.pc as usize);
+        // TODO handle compressed instructions, maybe the u32 should just be passed here
+        let Ok(mut instruction) = self.read_u32(self.pc as usize) else {
+            self.set_mtrap(1);
+            self.mtval = 0;
+            return;
+        };
         if instruction & 3 != 3 {
             instruction &= 0xffff;
         }
@@ -189,72 +194,73 @@ impl Emulator {
     }
 
     fn cycle(&mut self) {
-        let instruction = self.read_u16(self.pc as usize);
-        if instruction & 0b11 == 0b11 {
-            let instruction = self.read_u32(self.pc as usize);
+        if let Ok(instruction) = self.read_u16(self.pc as usize) {
+            if instruction & 0b11 == 0b11 {
+                let Ok(instruction) = self.read_u32(self.pc as usize) else {
+                    self.set_mtrap(1);
+                    self.mtval = 0;
+                    return;
+                };
 
-            match Instruction::parse(instruction) {
-                Some(instruction) => self.execute(instruction),
-                None => self.illegal_instruction(),
+                match Instruction::parse(instruction) {
+                    Some(instruction) => self.execute(instruction),
+                    None => self.illegal_instruction(),
+                }
+                self.pc = self.pc.wrapping_add(4);
+            } else {
+                match Instruction::parse_compressed(instruction) {
+                    Some(instruction) => self.execute(instruction),
+                    None => self.illegal_instruction(),
+                }
+
+                self.pc = self.pc.wrapping_add(2);
             }
             self.increment_counters();
-
-            self.handle_traps();
-
-            self.pc = self.pc.wrapping_add(4);
         } else {
-            match Instruction::parse_compressed(instruction) {
-                Some(instruction) => self.execute(instruction),
-                None => self.illegal_instruction(),
-            }
+            self.set_mtrap(1);
+            self.mtval = 0;
+        };
 
-            self.pc = self.pc.wrapping_add(2);
-
-            self.increment_counters();
-
-            self.handle_traps();
-        }
+        self.handle_traps();
     }
 }
 
 fn main() {
     let path = std::env::args().nth(1).unwrap();
 
-    for entry in std::fs::read_dir(path).unwrap() {
-        if let Ok(entry) = entry {
-            let name = entry.file_name();
-            let name = name.to_str().unwrap();
+    for entry in std::fs::read_dir(path).unwrap().flatten() {
+        let name = entry.file_name();
+        let name = name.to_str().unwrap();
 
-            if !name.starts_with("rv64uc-p-") || name.ends_with(".dump") {
-                continue;
-            }
+        if !name.starts_with("rv64mi-p-") || name.ends_with(".dump") {
+            continue;
+        }
 
-            let path = entry.path();
-            let path = path.to_str().unwrap();
+        let path = entry.path();
+        let path = path.to_str().unwrap();
 
-            let mut emu = Emulator::new(128 * 1024 * 1024);
+        let mut emu = Emulator::new(128 * 1024 * 1024);
 
-            let tester_addr = match name {
-                "rv64ui-p-ma_data" => 0x3000,
-                "rv64uc-p-rvc" => 0x4000,
-                _ => 0x2000,
-            };
+        let tester_addr = match name {
+            "rv64ui-p-ma_data" => 0x3000,
+            "rv64uc-p-rvc" => 0x4000,
+            _ => 0x2000,
+        };
 
-            let tester = Rc::new(RefCell::new(tester::Tester::new(tester_addr)));
+        let tester = Rc::new(RefCell::new(tester::Tester::new(tester_addr)));
 
-            emu.load_binary(&path, 0x1000).unwrap();
+        emu.load_binary(path, 0x1000).unwrap();
 
-            emu.add_device(tester.clone() as Rc<RefCell<dyn Device>>);
+        emu.add_device(tester.clone() as Rc<RefCell<dyn Device>>);
 
-            loop {
-                emu.cycle();
-                if let Some(code) = tester.borrow().get_exit_code() {
-                    println!("{name}: {code}");
-                    if code != 0 {
-                        std::process::exit(code as i32);
-                    }
-                    break;
+        loop {
+            emu.cycle();
+            if let Some(code) = tester.borrow().get_exit_code() {
+                println!("{name}: {code}");
+                if code != 0 {
+                    std::process::exit(code as i32);
                 }
+                break;
             }
         }
     }

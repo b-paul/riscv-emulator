@@ -46,25 +46,36 @@ impl Emulator {
             BaseInstruction::Load(op, i) => {
                 let offset = ((i.imm as i64) << 52 >> 52) as u64;
                 let addr = self.x[i.rs1].wrapping_add(offset) as usize;
-                self.x[i.rd] = match op {
-                    BLoad::B => self.read_u8(addr) as i8 as i64 as u64,
-                    BLoad::Bu => self.read_u8(addr) as u64,
-                    BLoad::H => self.read_u16(addr) as i16 as i64 as u64,
-                    BLoad::Hu => self.read_u16(addr) as u64,
-                    BLoad::W => self.read_u32(addr) as i32 as i64 as u64,
-                    BLoad::Wu => self.read_u32(addr) as u64,
+                let val = match op {
+                    BLoad::B => self.read_u8(addr).map(|x| x as i8 as i64 as u64),
+                    BLoad::Bu => self.read_u8(addr).map(|x| x as u64),
+                    BLoad::H => self.read_u16(addr).map(|x| x as i16 as i64 as u64),
+                    BLoad::Hu => self.read_u16(addr).map(|x| x as u64),
+                    BLoad::W => self.read_u32(addr).map(|x| x as i32 as i64 as u64),
+                    BLoad::Wu => self.read_u32(addr).map(|x| x as u64),
                     BLoad::D => self.read_u64(addr),
                 };
+                match val {
+                    Ok(val) => self.x[i.rd] = val,
+                    Err(_) => {
+                        self.set_mtrap(5);
+                        self.mtval = 0;
+                    }
+                }
             }
             BaseInstruction::Store(op, i) => {
                 let offset = ((i.imm as i64) << 52 >> 52) as u64;
                 let addr = self.x[i.rs1].wrapping_add(offset) as usize;
                 let val = self.x[i.rs2];
-                match op {
+                let res = match op {
                     BStore::B => self.write_u8(addr, val as u8),
                     BStore::H => self.write_u16(addr, val as u16),
                     BStore::W => self.write_u32(addr, val as u32),
                     BStore::D => self.write_u64(addr, val),
+                };
+                if let Err(_) = res {
+                    self.set_mtrap(7);
+                    self.mtval = 0;
                 }
             }
             BaseInstruction::Imm64(op, i) => {

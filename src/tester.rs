@@ -27,7 +27,7 @@ impl Device for Tester {
         }]
     }
 
-    fn read_bytes(&mut self, _addr: usize, _size: usize) -> Vec<u8> {
+    fn read_bytes(&mut self, _addr: usize, _size: usize) -> &[u8] {
         unreachable!()
     }
 
