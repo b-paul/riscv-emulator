@@ -65,9 +65,9 @@ impl RType {
 
     fn cr(instruction: u16) -> Self {
         RType {
-            rd: (instruction >> 7 & 0x1f) as usize,
-            rs1: (instruction >> 7 & 0x1f) as usize,
-            rs2: (instruction >> 2 & 0x1f) as usize,
+            rd: (instruction >> 7 & 0x07) as usize + 8,
+            rs1: (instruction >> 7 & 0x07) as usize + 8,
+            rs2: (instruction >> 2 & 0x07) as usize + 8,
         }
     }
 
@@ -149,8 +149,8 @@ impl SType {
 
     fn cs(instruction: u16, imm: u16) -> Self {
         SType {
-            rs1: (instruction >> 2 & 7) as usize + 8,
-            rs2: (instruction >> 7 & 7) as usize + 8,
+            rs1: (instruction >> 7 & 7) as usize + 8,
+            rs2: (instruction >> 2 & 7) as usize + 8,
             imm,
         }
     }
@@ -270,7 +270,7 @@ impl Instruction {
                         ),
                     ))),
                     0b111 => Some(Instruction::Base(BaseInstruction::Store(
-                        BStore::W,
+                        BStore::D,
                         SType::cs(
                             instruction,
                             instruction >> 7 & 0x38 | instruction << 1 & 0xc0,
@@ -294,27 +294,33 @@ impl Instruction {
             0b01 => {
                 match funct3 {
                     // C.J
-                    0b101 => Some(Instruction::Base(BaseInstruction::Jal(JType::cj(
-                        instruction,
-                        0,
-                    )))),
+                    0b101 => Some(Instruction::Base(BaseInstruction::Jal(
+                        JType::cj(instruction, 0),
+                        true,
+                    ))),
                     0b110 => Some(Instruction::Base(BaseInstruction::Branch(
                         Branch::Eq,
                         BType::cb(instruction),
+                        true,
                     ))),
                     0b111 => Some(Instruction::Base(BaseInstruction::Branch(
                         Branch::Ne,
                         BType::cb(instruction),
+                        true,
                     ))),
                     // C.LI
-                    0b010 => Some(Instruction::Base(BaseInstruction::Imm64(
-                        BImmediate64::Add,
-                        IType::ci(
+                    0b010 => {
+                        let mut instr = IType::ci(
                             instruction,
                             (((instruction >> 2 & 0x1f | instruction >> 7 & 0x20) as i16) << 10
                                 >> 10) as u16,
-                        ),
-                    ))),
+                        );
+                        instr.rs1 = 0; // yuck
+                        Some(Instruction::Base(BaseInstruction::Imm64(
+                            BImmediate64::Add,
+                            instr,
+                        )))
+                    }
                     0b011 => {
                         let rd = (instruction >> 7 & 0x1f) as usize;
                         // C.ADDI16SP
@@ -375,27 +381,31 @@ impl Instruction {
                                 BImmediate64::Sra,
                                 IType::cb(instruction),
                             ))),
-                            0b10 => Some(Instruction::Base(BaseInstruction::Imm64(
-                                BImmediate64::And,
-                                IType::cb(instruction),
-                            ))),
+                            0b10 => {
+                                let mut instr = IType::cb(instruction);
+                                instr.imm = ((instr.imm as i16) << 10 >> 10) as u16;
+                                Some(Instruction::Base(BaseInstruction::Imm64(
+                                    BImmediate64::And,
+                                    instr,
+                                )))
+                            }
                             0b11 => {
                                 let funct3 = instruction >> 5 & 0x3 | instruction >> 10 & 0x4;
                                 match funct3 {
-                                    0b011 => Some(Instruction::Base(BaseInstruction::Reg64(
-                                        BRegister64::And,
-                                        RType::cr(instruction),
-                                    ))),
-                                    0b010 => Some(Instruction::Base(BaseInstruction::Reg64(
-                                        BRegister64::Or,
+                                    0b000 => Some(Instruction::Base(BaseInstruction::Reg64(
+                                        BRegister64::Sub,
                                         RType::cr(instruction),
                                     ))),
                                     0b001 => Some(Instruction::Base(BaseInstruction::Reg64(
                                         BRegister64::Xor,
                                         RType::cr(instruction),
                                     ))),
-                                    0b000 => Some(Instruction::Base(BaseInstruction::Reg64(
-                                        BRegister64::Sub,
+                                    0b010 => Some(Instruction::Base(BaseInstruction::Reg64(
+                                        BRegister64::Or,
+                                        RType::cr(instruction),
+                                    ))),
+                                    0b011 => Some(Instruction::Base(BaseInstruction::Reg64(
+                                        BRegister64::And,
                                         RType::cr(instruction),
                                     ))),
                                     0b101 => Some(Instruction::Base(BaseInstruction::Reg32(
@@ -463,21 +473,13 @@ impl Instruction {
                         } else {
                             match (rs1 == 0, rs2 == 0, funct4) {
                                 // C.JR
-                                (false, true, false) => {
-                                    Some(Instruction::Base(BaseInstruction::Jalr(IType {
-                                        rd: 0,
-                                        rs1,
-                                        imm: 0,
-                                    })))
-                                }
+                                (false, true, false) => Some(Instruction::Base(
+                                    BaseInstruction::Jalr(IType { rd: 0, rs1, imm: 0 }, true),
+                                )),
                                 // C.JALR
-                                (false, true, true) => {
-                                    Some(Instruction::Base(BaseInstruction::Jalr(IType {
-                                        rd: 1,
-                                        rs1,
-                                        imm: 0,
-                                    })))
-                                }
+                                (false, true, true) => Some(Instruction::Base(
+                                    BaseInstruction::Jalr(IType { rd: 1, rs1, imm: 0 }, true),
+                                )),
                                 // C.MV
                                 (false, false, false) => {
                                     Some(Instruction::Base(BaseInstruction::Reg64(
@@ -621,21 +623,21 @@ impl Instruction {
                 _ => None?,
             },
 
-            0b1101111 => I::Base(B::Jal(JType::new(instruction))),
+            0b1101111 => I::Base(B::Jal(JType::new(instruction), false)),
             0b1100111 => {
                 if funct3 == 0b000 {
-                    I::Base(B::Jalr(IType::new(instruction)))
+                    I::Base(B::Jalr(IType::new(instruction), false))
                 } else {
                     None?
                 }
             }
             0b1100011 => match funct3 {
-                0b000 => I::Base(B::Branch(Branch::Eq, BType::new(instruction))),
-                0b001 => I::Base(B::Branch(Branch::Ne, BType::new(instruction))),
-                0b100 => I::Base(B::Branch(Branch::Lt, BType::new(instruction))),
-                0b110 => I::Base(B::Branch(Branch::Ltu, BType::new(instruction))),
-                0b101 => I::Base(B::Branch(Branch::Ge, BType::new(instruction))),
-                0b111 => I::Base(B::Branch(Branch::Geu, BType::new(instruction))),
+                0b000 => I::Base(B::Branch(Branch::Eq, BType::new(instruction), false)),
+                0b001 => I::Base(B::Branch(Branch::Ne, BType::new(instruction), false)),
+                0b100 => I::Base(B::Branch(Branch::Lt, BType::new(instruction), false)),
+                0b110 => I::Base(B::Branch(Branch::Ltu, BType::new(instruction), false)),
+                0b101 => I::Base(B::Branch(Branch::Ge, BType::new(instruction), false)),
+                0b111 => I::Base(B::Branch(Branch::Geu, BType::new(instruction), false)),
                 _ => None?,
             },
 
