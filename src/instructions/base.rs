@@ -77,9 +77,9 @@ pub enum BRegister32 {
 pub enum BaseInstruction {
     Lui(UType),
     Auipc(UType),
-    Jal(JType),
-    Jalr(IType),
-    Branch(Branch, BType),
+    Jal(JType, bool),
+    Jalr(IType, bool),
+    Branch(Branch, BType, bool),
     Load(BLoad, IType),
     Store(BStore, SType),
     Imm64(BImmediate64, IType),

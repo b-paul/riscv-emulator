@@ -15,19 +15,22 @@ impl Emulator {
         match instruction {
             BaseInstruction::Lui(i) => self.x[i.rd] = i.imm as i64 as u64,
             BaseInstruction::Auipc(i) => self.x[i.rd] = self.pc.wrapping_add(i.imm as i64 as u64),
-            BaseInstruction::Jal(i) => {
+            BaseInstruction::Jal(i, compressed) => {
                 let offset = (i.imm << 12 >> 12) as i64;
-                self.x[i.rd] = self.pc.wrapping_add(4);
-                self.pc = self.pc.wrapping_add(offset as u64).wrapping_sub(4);
+                let instroff = if compressed { 2 } else { 4 };
+                self.x[i.rd] = self.pc.wrapping_add(instroff);
+                self.pc = self.pc.wrapping_add(offset as u64).wrapping_sub(instroff);
             }
-            BaseInstruction::Jalr(i) => {
+            BaseInstruction::Jalr(i, compressed) => {
                 let offset = ((i.imm as i32) << 20 >> 20) as i64 as u64;
+                let instroff = if compressed { 2 } else { 4 };
                 let tmp = self.x[i.rs1];
-                self.x[i.rd] = self.pc.wrapping_add(4);
-                self.pc = tmp.wrapping_add(offset).wrapping_sub(4);
+                self.x[i.rd] = self.pc.wrapping_add(instroff);
+                self.pc = tmp.wrapping_add(offset).wrapping_sub(instroff);
             }
-            BaseInstruction::Branch(branch, i) => {
+            BaseInstruction::Branch(branch, i, compressed) => {
                 let offset = ((i.imm as i32) << 19 >> 19) as u64;
+                let instroff = if compressed { 2 } else { 4 };
                 let taken = match branch {
                     Branch::Eq => self.x[i.rs1] == self.x[i.rs2],
                     Branch::Ne => self.x[i.rs1] != self.x[i.rs2],
@@ -37,7 +40,7 @@ impl Emulator {
                     Branch::Geu => self.x[i.rs1] >= self.x[i.rs2],
                 };
                 if taken {
-                    self.pc = self.pc.wrapping_add(offset).wrapping_sub(4);
+                    self.pc = self.pc.wrapping_add(offset).wrapping_sub(instroff);
                 }
             }
             BaseInstruction::Load(op, i) => {

@@ -225,7 +225,7 @@ fn main() {
             let name = entry.file_name();
             let name = name.to_str().unwrap();
 
-            if !name.starts_with("rv64mi-p-") || name.ends_with(".dump") {
+            if !name.starts_with("rv64uc-p-") || name.ends_with(".dump") {
                 continue;
             }
 
@@ -234,10 +234,10 @@ fn main() {
 
             let mut emu = Emulator::new(128 * 1024 * 1024);
 
-            let tester_addr = if name == "rv64ui-p-ma_data" {
-                0x3000
-            } else {
-                0x2000
+            let tester_addr = match name {
+                "rv64ui-p-ma_data" => 0x3000,
+                "rv64uc-p-rvc" => 0x4000,
+                _ => 0x2000,
             };
 
             let tester = Rc::new(RefCell::new(tester::Tester::new(tester_addr)));
