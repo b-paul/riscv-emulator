@@ -4,6 +4,12 @@ pub enum AccessType {
 }
 
 impl AccessType {
+    pub fn can_read(&self) -> bool {
+        match self {
+            AccessType::Write => false,
+        }
+    }
+
     pub fn can_write(&self) -> bool {
         match self {
             AccessType::Write => true,
@@ -29,6 +35,6 @@ pub trait Device {
     /// Returns the list of registers for this device.
     fn get_registers(&self) -> Vec<DeviceRegister>;
 
-    fn read_bytes(&mut self, addr: usize, size: usize) -> Vec<u8>;
+    fn read_bytes(&mut self, addr: usize, size: usize) -> &[u8];
     fn write_bytes(&mut self, addr: usize, bytes: &[u8]);
 }

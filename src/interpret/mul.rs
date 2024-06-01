@@ -6,7 +6,8 @@ use crate::{
 impl Emulator {
     pub fn execute_mul(&mut self, instruction: MulInstruction) {
         if self.misa & 1 << 12 == 0 {
-            todo!("Disabled extension")
+            self.illegal_instruction();
+            return;
         }
         match instruction {
             MulInstruction::Reg64(op, i) => {
