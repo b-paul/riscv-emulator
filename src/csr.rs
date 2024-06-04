@@ -47,9 +47,9 @@ impl Emulator {
         None
     }
 
-    pub fn set_csr(&mut self, csr: u32, val: u64, write: bool) {
+    pub fn set_csr(&mut self, csr: u32, val: u64, write: bool) -> bool {
         if !write {
-            return;
+            return true;
         }
         if self.privilege >= Privilege::Machine {
             match csr {
@@ -65,13 +65,13 @@ impl Emulator {
                     self.mstatus &= !0x100;
                     // We want to ensure that MPP only has legal values (we don't implement S yet)
                     let mpp = self.mstatus & (3 << 11);
-                    if mpp != 0b00 && mpp != 0b11 {
-                        self.mstatus = self.mstatus & !(3 << 1) | old_mpp;
+                    if mpp != 0b00 << 11 && mpp != 0b11 << 11 {
+                        self.mstatus = self.mstatus & !(3 << 11) | old_mpp;
                     }
                     // SXL is read only 0 since we do not implement S yet
-                    self.mstatus &= !(3 << 32);
+                    self.mstatus &= !(3 << 34);
                     // Ensure that UXL stays on 64 bit, since we don't want to allow variable len
-                    self.mstatus = (self.mstatus & !(3 << 30)) | 1 << 31;
+                    self.mstatus = (self.mstatus & !(3 << 32)) | 2 << 32;
                     // MPRIV is read only 0 if U is not implemented
                     self.mstatus &= !(1 << 17);
                     // MXR is read only 0 if S is not implemented
@@ -115,16 +115,16 @@ impl Emulator {
                 0xB02 => self.minstret = val,          // minstret
                 0x306 => self.mcounteren = val as u32, // mcounteren
                 0x340 => self.mscratch = val,          // mscratch
-                0x341 => self.mepc = val,              // mepc
+                0x341 => self.mepc = val & !1,         // mepc
                 0x342 => self.mcause = val,            // mcause
                 0x343 => self.mtval = val,             // mtval
                 0x30A => self.menvcfg = val,           // menvcfg TODO
                 0x747 => self.mseccfg = val,           // mseccfg TODO?
 
-                _ => (),
+                _ => return false,
             }
-            return;
+            return true;
         }
-        self.illegal_instruction();
+        false
     }
 }

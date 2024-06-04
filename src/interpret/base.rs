@@ -18,15 +18,25 @@ impl Emulator {
             BaseInstruction::Jal(i, compressed) => {
                 let offset = (i.imm << 12 >> 12) as i64;
                 let instroff = if compressed { 2 } else { 4 };
-                self.x[i.rd] = self.pc.wrapping_add(instroff);
-                self.pc = self.pc.wrapping_add(offset as u64).wrapping_sub(instroff);
+                if offset % 2 != 0 {
+                    self.set_mtrap(0);
+                    self.mtval = 0;
+                } else {
+                    self.x[i.rd] = self.pc.wrapping_add(instroff);
+                    self.pc = self.pc.wrapping_add(offset as u64).wrapping_sub(instroff);
+                }
             }
             BaseInstruction::Jalr(i, compressed) => {
-                let offset = ((i.imm as i32) << 20 >> 20) as i64 as u64;
+                let offset = ((i.imm as i32) << 20 >> 20) as i64 as u64 & !1;
                 let instroff = if compressed { 2 } else { 4 };
                 let tmp = self.x[i.rs1];
-                self.x[i.rd] = self.pc.wrapping_add(instroff);
-                self.pc = tmp.wrapping_add(offset).wrapping_sub(instroff);
+                if offset % 2 != 0 {
+                    self.set_mtrap(0);
+                    self.mtval = 0;
+                } else {
+                    self.x[i.rd] = self.pc.wrapping_add(instroff);
+                    self.pc = tmp.wrapping_add(offset).wrapping_sub(instroff);
+                }
             }
             BaseInstruction::Branch(branch, i, compressed) => {
                 let offset = ((i.imm as i32) << 19 >> 19) as u64;

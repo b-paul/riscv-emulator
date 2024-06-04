@@ -147,9 +147,9 @@ impl Emulator {
         self.devices.push(device);
     }
 
-    fn handle_traps(&mut self) {
+    fn handle_traps(&mut self, pc: u64) {
         if let Some(trap) = self.trap {
-            self.mepc = self.pc;
+            self.mepc = pc;
             self.mcause = trap;
             self.pc = self.mtvec;
             self.trap = None;
@@ -194,6 +194,7 @@ impl Emulator {
     }
 
     fn cycle(&mut self) {
+        let mut offset = 0;
         if let Ok(instruction) = self.read_u16(self.pc as usize) {
             if instruction & 0b11 == 0b11 {
                 let Ok(instruction) = self.read_u32(self.pc as usize) else {
@@ -206,22 +207,23 @@ impl Emulator {
                     Some(instruction) => self.execute(instruction),
                     None => self.illegal_instruction(),
                 }
-                self.pc = self.pc.wrapping_add(4);
+                offset = 4;
             } else {
                 match Instruction::parse_compressed(instruction) {
                     Some(instruction) => self.execute(instruction),
                     None => self.illegal_instruction(),
                 }
 
-                self.pc = self.pc.wrapping_add(2);
+                offset = 2;
             }
             self.increment_counters();
         } else {
             self.set_mtrap(1);
             self.mtval = 0;
         };
-
-        self.handle_traps();
+        let pc = self.pc;
+        self.pc = self.pc.wrapping_add(offset);
+        self.handle_traps(pc);
     }
 }
 

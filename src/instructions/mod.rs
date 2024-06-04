@@ -553,7 +553,7 @@ impl Instruction {
                 }
                 0b101 => {
                     let upper = instruction >> 26 & 0x3f;
-                    let instruction = instruction & 0x1ffffff;
+                    let instruction = instruction & 0x3ffffff;
                     match upper {
                         0b0000000 => I::Base(B::Imm64(Bimm64::Srl, IType::new(instruction))),
                         0b010000 => I::Base(B::Imm64(Bimm64::Sra, IType::new(instruction))),
