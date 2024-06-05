@@ -1,10 +1,13 @@
 use crate::{
     instructions::zicsr::{ZOp, ZicsrInstruction},
-    Emulator,
+    Emulator, Trap,
 };
 
 impl Emulator {
-    pub fn execute_zicsr(&mut self, ZicsrInstruction(op, is_imm, i): ZicsrInstruction) {
+    pub fn execute_zicsr(
+        &mut self,
+        ZicsrInstruction(op, is_imm, i): ZicsrInstruction,
+    ) -> Result<(), Trap> {
         let val = if is_imm { i.rs1 as u64 } else { self.x[i.rs1] };
         let write = op == ZOp::Csrrw || i.rs1 != 0;
         let read = !(op == ZOp::Csrrw && i.rs1 == 0);
@@ -18,10 +21,11 @@ impl Emulator {
             if self.set_csr(i.imm as u32, val, write) {
                 self.x[i.rd] = csr_val;
             } else {
-                self.illegal_instruction();
+                return Err(Trap::IllegalInstruction);
             }
         } else {
-            self.illegal_instruction();
+            return Err(Trap::IllegalInstruction);
         }
+        Ok(())
     }
 }

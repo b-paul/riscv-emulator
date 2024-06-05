@@ -45,7 +45,33 @@ impl From<Privilege> for u64 {
 
 // TODO
 // enums for CSRs ?!
-// enums for exceptions ?!
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+enum Trap {
+    InstrAddrMisaligned,
+    InstrAccessFault,
+    IllegalInstruction,
+    Breakpoint,
+    LoadAccessFault,
+    StoreAccessFault,
+    ECallU,
+    ECallM,
+}
+
+impl Trap {
+    fn to_code(self) -> u64 {
+        match self {
+            Trap::InstrAddrMisaligned => 0,
+            Trap::InstrAccessFault => 1,
+            Trap::IllegalInstruction => 2,
+            Trap::Breakpoint => 3,
+            Trap::LoadAccessFault => 5,
+            Trap::StoreAccessFault => 7,
+            Trap::ECallU => 8,
+            Trap::ECallM => 11,
+        }
+    }
+}
 
 struct Emulator {
     memory: Memory,
@@ -165,23 +191,23 @@ impl Emulator {
         }
     }
 
-    fn set_mtrap(&mut self, cause: u64) {
+    fn set_mtrap(&mut self, trap: Trap) {
+        let cause = trap.to_code();
         self.trap = Some(cause);
     }
 
-    fn illegal_instruction(&mut self) {
-        // TODO handle compressed instructions, maybe the u32 should just be passed here
-        let Ok(mut instruction) = self.read_u32(self.pc as usize) else {
-            self.set_mtrap(1);
-            self.mtval = 0;
-            return;
-        };
-        if instruction & 3 != 3 {
-            instruction &= 0xffff;
+    fn set_trap(&mut self, trap: Trap, opcode: u64) {
+        self.set_mtrap(trap);
+        match trap {
+            Trap::InstrAddrMisaligned => self.mtval = 0,
+            Trap::InstrAccessFault => self.mtval = 0,
+            Trap::IllegalInstruction => self.mtval = opcode,
+            Trap::Breakpoint => self.mtval = 0,
+            Trap::LoadAccessFault => self.mtval = 0,
+            Trap::StoreAccessFault => self.mtval = 0,
+            Trap::ECallU => self.mtval = 0,
+            Trap::ECallM => self.mtval = 0,
         }
-        // S-MODE maybe this will be an S-mode interrupt or something
-        self.set_mtrap(2);
-        self.mtval = instruction as u64;
     }
 
     fn increment_counters(&mut self) {
@@ -195,31 +221,30 @@ impl Emulator {
 
     fn cycle(&mut self) {
         let mut offset = 0;
-        if let Ok(instruction) = self.read_u16(self.pc as usize) {
-            if instruction & 0b11 == 0b11 {
-                let Ok(instruction) = self.read_u32(self.pc as usize) else {
-                    self.set_mtrap(1);
+        if let Ok(opcode) = self.read_u16(self.pc as usize) {
+            if opcode & 0b11 == 0b11 {
+                let Ok(opcode) = self.read_u32(self.pc as usize) else {
+                    self.set_trap(Trap::InstrAccessFault, 0);
                     self.mtval = 0;
                     return;
                 };
 
-                match Instruction::parse(instruction) {
-                    Some(instruction) => self.execute(instruction),
-                    None => self.illegal_instruction(),
+                match Instruction::parse(opcode) {
+                    Some(instruction) => self.execute(instruction, opcode as u64),
+                    None => self.set_trap(Trap::IllegalInstruction, opcode as u64),
                 }
                 offset = 4;
             } else {
-                match Instruction::parse_compressed(instruction) {
-                    Some(instruction) => self.execute(instruction),
-                    None => self.illegal_instruction(),
+                match Instruction::parse_compressed(opcode) {
+                    Some(instruction) => self.execute(instruction, opcode as u64),
+                    None => self.set_trap(Trap::IllegalInstruction, opcode as u64),
                 }
 
                 offset = 2;
             }
             self.increment_counters();
         } else {
-            self.set_mtrap(1);
-            self.mtval = 0;
+            self.set_trap(Trap::InstrAccessFault, 0);
         };
         let pc = self.pc;
         self.pc = self.pc.wrapping_add(offset);
@@ -259,9 +284,6 @@ fn main() {
             emu.cycle();
             if let Some(code) = tester.borrow().get_exit_code() {
                 println!("{name}: {code}");
-                if code != 0 {
-                    std::process::exit(code as i32);
-                }
                 break;
             }
         }

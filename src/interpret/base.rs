@@ -3,14 +3,13 @@ use crate::{
         BImmediate32, BImmediate64, BLoad, BRegister32, BRegister64, BStore, BaseInstruction,
         Branch,
     },
-    Emulator, Privilege,
+    Emulator, Privilege, Trap,
 };
 
 impl Emulator {
-    pub fn execute_base(&mut self, instruction: BaseInstruction) {
+    pub fn execute_base(&mut self, instruction: BaseInstruction) -> Result<(), Trap> {
         if self.misa & 1 << 8 == 0 {
-            self.illegal_instruction();
-            return;
+            return Err(Trap::IllegalInstruction);
         }
         match instruction {
             BaseInstruction::Lui(i) => self.x[i.rd] = i.imm as i64 as u64,
@@ -19,8 +18,9 @@ impl Emulator {
                 let offset = (i.imm << 12 >> 12) as i64;
                 let instroff = if compressed { 2 } else { 4 };
                 if offset % 2 != 0 {
-                    self.set_mtrap(0);
-                    self.mtval = 0;
+                    // We are jumping to a misaligned address, so we throw an instruction address
+                    // misaligned trap
+                    return Err(Trap::InstrAddrMisaligned);
                 } else {
                     self.x[i.rd] = self.pc.wrapping_add(instroff);
                     self.pc = self.pc.wrapping_add(offset as u64).wrapping_sub(instroff);
@@ -30,13 +30,11 @@ impl Emulator {
                 let offset = ((i.imm as i32) << 20 >> 20) as i64 as u64 & !1;
                 let instroff = if compressed { 2 } else { 4 };
                 let tmp = self.x[i.rs1];
-                if offset % 2 != 0 {
-                    self.set_mtrap(0);
-                    self.mtval = 0;
-                } else {
-                    self.x[i.rd] = self.pc.wrapping_add(instroff);
-                    self.pc = tmp.wrapping_add(offset).wrapping_sub(instroff);
-                }
+                // We ignore the lowest bit, and since we support compressed mode we will always
+                // jump to a legal address. Thus we do not need to throw an instruction address
+                // misaligned trap.
+                self.x[i.rd] = self.pc.wrapping_add(instroff);
+                self.pc = tmp.wrapping_add(offset).wrapping_sub(instroff);
             }
             BaseInstruction::Branch(branch, i, compressed) => {
                 let offset = ((i.imm as i32) << 19 >> 19) as u64;
@@ -68,8 +66,7 @@ impl Emulator {
                 match val {
                     Ok(val) => self.x[i.rd] = val,
                     Err(_) => {
-                        self.set_mtrap(5);
-                        self.mtval = 0;
+                        return Err(Trap::LoadAccessFault);
                     }
                 }
             }
@@ -83,9 +80,8 @@ impl Emulator {
                     BStore::W => self.write_u32(addr, val as u32),
                     BStore::D => self.write_u64(addr, val),
                 };
-                if let Err(_) = res {
-                    self.set_mtrap(7);
-                    self.mtval = 0;
+                if res.is_err() {
+                    return Err(Trap::StoreAccessFault);
                 }
             }
             BaseInstruction::Imm64(op, i) => {
@@ -142,16 +138,16 @@ impl Emulator {
             }
             BaseInstruction::Fence(_) => (),
             BaseInstruction::Ecall => {
-                match self.privilege {
-                    Privilege::User => self.set_mtrap(8),
-                    Privilege::Machine => self.set_mtrap(11),
-                }
                 self.minstret = self.minstret.wrapping_sub(1);
+                match self.privilege {
+                    Privilege::User => return Err(Trap::ECallU),
+                    Privilege::Machine => return Err(Trap::ECallM),
+                }
             }
             BaseInstruction::Ebreak => {
-                self.set_mtrap(3);
-                self.minstret = self.minstret.wrapping_sub(1)
+                return Err(Trap::Breakpoint);
             }
         }
+        Ok(())
     }
 }

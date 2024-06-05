@@ -1,13 +1,12 @@
 use crate::{
     instructions::mul::{MReg32, MReg64, MulInstruction},
-    Emulator,
+    Emulator, Trap,
 };
 
 impl Emulator {
-    pub fn execute_mul(&mut self, instruction: MulInstruction) {
+    pub fn execute_mul(&mut self, instruction: MulInstruction) -> Result<(), Trap> {
         if self.misa & 1 << 12 == 0 {
-            self.illegal_instruction();
-            return;
+            return Err(Trap::IllegalInstruction);
         }
         match instruction {
             MulInstruction::Reg64(op, i) => {
@@ -96,5 +95,6 @@ impl Emulator {
                 };
             }
         }
+        Ok(())
     }
 }

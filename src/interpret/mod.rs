@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::{instructions::Instruction, mem::AccessFault, Emulator};
+use super::{instructions::Instruction, Emulator};
 
 mod atomic;
 mod base;
@@ -9,27 +9,18 @@ mod mul;
 mod zicsr;
 
 impl Emulator {
-    pub fn execute(&mut self, instruction: Instruction) {
+    pub fn execute(&mut self, instruction: Instruction, opcode: u64) {
         self.x[0] = 0;
 
-        match instruction {
+        let trap = match instruction {
             Instruction::Base(instr) => self.execute_base(instr),
             Instruction::Machine(instr) => self.execute_machine(instr),
             Instruction::Zicsr(instr) => self.execute_zicsr(instr),
             Instruction::Mul(instr) => self.execute_mul(instr),
-            Instruction::Atomic(instr) => match self.execute_atomic(instr) {
-                Ok(_) => (),
-                Err(e) => match e {
-                    AccessFault::Load => {
-                        self.set_mtrap(5);
-                        self.mtval = 0;
-                    }
-                    AccessFault::Store => {
-                        self.set_mtrap(7);
-                        self.mtval = 0;
-                    }
-                },
-            },
+            Instruction::Atomic(instr) => self.execute_atomic(instr),
+        };
+        if let Err(trap) = trap {
+            self.set_trap(trap, opcode);
         }
     }
 }
