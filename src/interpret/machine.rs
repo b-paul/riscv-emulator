@@ -1,15 +1,13 @@
-use crate::{instructions::machine::MachineInstruction, Emulator, Privilege};
+use crate::{instructions::machine::MachineInstruction, Emulator, Privilege, Trap};
 
 impl Emulator {
-    pub fn execute_machine(&mut self, instruction: MachineInstruction) {
+    pub fn execute_machine(&mut self, instruction: MachineInstruction) -> Result<(), Trap> {
         if self.privilege < Privilege::Machine {
-            // TODO i wasn't able to figure out what should happen in this case
-            // from reading the specification, so I'm just going to assume
-            // invalid instruction
-            self.illegal_instruction();
+            return Err(Trap::IllegalInstruction);
         }
         match instruction {
             MachineInstruction::MRet(_) => {
+                // Update the pc. MRET isn't ever compressed, so we will always subtract 4.
                 self.pc = self.mepc.wrapping_sub(4);
                 // Set MIE to MPIE
                 self.mstatus = (self.mstatus & !0x8) | (self.mstatus & !0x80) >> 4;
@@ -30,5 +28,6 @@ impl Emulator {
                 self.waiting = true;
             }
         }
+        Ok(())
     }
 }

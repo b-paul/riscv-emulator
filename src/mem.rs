@@ -1,5 +1,6 @@
-use crate::Emulator;
 use std::borrow::Cow;
+
+use crate::{Emulator, Trap};
 
 pub struct Memory {
     bytes: Box<[u8]>,
@@ -32,6 +33,15 @@ impl Memory {
 pub enum AccessFault {
     Load,
     Store,
+}
+
+impl AccessFault {
+    pub fn trap(self) -> Trap {
+        match self {
+            AccessFault::Load => Trap::LoadAccessFault,
+            AccessFault::Store => Trap::StoreAccessFault,
+        }
+    }
 }
 
 impl Emulator {
