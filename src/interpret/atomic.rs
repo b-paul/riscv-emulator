@@ -14,7 +14,7 @@ impl Emulator {
             instr,
         }: AtomicInstruction,
     ) -> Result<(), Trap> {
-        if self.misa & 1 == 0 {
+        if self.machine_csrs.misa & 1 == 0 {
             return Err(Trap::IllegalInstruction);
         }
         let addr = self.x[instr.rs1] as usize;

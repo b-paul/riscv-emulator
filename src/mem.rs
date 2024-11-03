@@ -92,8 +92,8 @@ impl Emulator {
         match addr {
             // CLINT
             0x2000000..=0x200BFFF => match addr - 0x2000000 {
-                0x4000 => Ok(self.mtimecmp),
-                0x8000 => Ok(self.mtime),
+                0x4000 => Ok(self.machine_csrs.mtimecmp),
+                0x8000 => Ok(self.machine_csrs.mtime),
                 _ => todo!("Slave bus error on invalid access or misaligned read"),
             },
             _ => {
@@ -145,8 +145,8 @@ impl Emulator {
             0x2000000..=0x200BFFF => {
                 let addr = addr - 0x2000000;
                 match addr {
-                    0x4000 => self.mtimecmp = val,
-                    0x8000 => self.mtime = val,
+                    0x4000 => self.machine_csrs.mtimecmp = val,
+                    0x8000 => self.machine_csrs.mtime = val,
                     _ => todo!("Slave bus error on invalid access or misaligned write"),
                 }
                 Ok(())

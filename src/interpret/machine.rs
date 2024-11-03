@@ -8,20 +8,21 @@ impl Emulator {
         match instruction {
             MachineInstruction::MRet(_) => {
                 // Update the pc. MRET isn't ever compressed, so we will always subtract 4.
-                self.pc = self.mepc.wrapping_sub(4);
+                self.pc = self.machine_csrs.mepc.wrapping_sub(4);
                 // Set MIE to MPIE
-                self.mstatus = (self.mstatus & !0x8) | (self.mstatus & !0x80) >> 4;
+                self.machine_csrs.mstatus =
+                    (self.machine_csrs.mstatus & !0x8) | (self.machine_csrs.mstatus & !0x80) >> 4;
                 // Set privilege to the value in MPP
-                self.privilege = (self.mstatus >> 11 & 0x3)
+                self.privilege = (self.machine_csrs.mstatus >> 11 & 0x3)
                     .try_into()
                     .expect("An illegal MPP value was written to mstatus.");
                 // Set MPIE to 1
-                self.mstatus |= 0x80;
+                self.machine_csrs.mstatus |= 0x80;
                 // Set MPP to user mode
-                self.mstatus &= !(3 << 11);
+                self.machine_csrs.mstatus &= !(3 << 11);
                 // If we are not in machine mode, set MPRV to 0
                 if self.privilege != Privilege::Machine {
-                    self.mstatus &= !(1 << 17);
+                    self.machine_csrs.mstatus &= !(1 << 17);
                 }
             }
             MachineInstruction::Wfi(_) => {
