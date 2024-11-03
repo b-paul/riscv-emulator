@@ -1,7 +1,7 @@
 use crate::{instructions::machine::MachineInstruction, Emulator, Privilege, Trap};
 
 impl Emulator {
-    pub fn execute_machine(&mut self, instruction: MachineInstruction) -> Result<(), Trap> {
+    pub(crate) fn execute_machine(&mut self, instruction: MachineInstruction) -> Result<(), Trap> {
         if self.privilege < Privilege::Machine {
             return Err(Trap::IllegalInstruction);
         }

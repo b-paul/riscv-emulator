@@ -4,7 +4,7 @@ use crate::{
 };
 
 impl Emulator {
-    pub fn execute_zicsr(
+    pub(crate) fn execute_zicsr(
         &mut self,
         ZicsrInstruction(op, is_imm, i): ZicsrInstruction,
     ) -> Result<(), Trap> {
