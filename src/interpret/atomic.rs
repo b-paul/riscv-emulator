@@ -5,7 +5,7 @@ use crate::{
 use std::sync::atomic::Ordering;
 
 impl Emulator {
-    pub fn execute_atomic(
+    pub(crate) fn execute_atomic(
         &mut self,
         AtomicInstruction {
             aq: _,

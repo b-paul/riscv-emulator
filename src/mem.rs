@@ -36,7 +36,7 @@ pub enum AccessFault {
 }
 
 impl AccessFault {
-    pub fn trap(self) -> Trap {
+    pub(crate) fn trap(self) -> Trap {
         match self {
             AccessFault::Load => Trap::LoadAccessFault,
             AccessFault::Store => Trap::StoreAccessFault,
