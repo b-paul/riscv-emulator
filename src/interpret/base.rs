@@ -8,7 +8,7 @@ use crate::{
 
 impl Emulator {
     pub(crate) fn execute_base(&mut self, instruction: BaseInstruction) -> Result<(), Trap> {
-        if self.misa & 1 << 8 == 0 {
+        if self.machine_csrs.misa & 1 << 8 == 0 {
             return Err(Trap::IllegalInstruction);
         }
         match instruction {
@@ -138,7 +138,7 @@ impl Emulator {
             }
             BaseInstruction::Fence(_) => (),
             BaseInstruction::Ecall => {
-                self.minstret = self.minstret.wrapping_sub(1);
+                self.machine_csrs.minstret = self.machine_csrs.minstret.wrapping_sub(1);
                 match self.privilege {
                     Privilege::User => return Err(Trap::ECallU),
                     Privilege::Machine => return Err(Trap::ECallM),

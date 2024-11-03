@@ -11,6 +11,7 @@ mod interpret;
 mod mem;
 pub mod tester;
 
+use csr::MachineCsrs;
 use device::{Device, DeviceRegister};
 use mem::Memory;
 
@@ -80,23 +81,7 @@ pub struct Emulator {
 
     trap: Option<u64>,
 
-    misa: u64,
-    mstatus: u64,
-    mtvec: u64,
-    mip: u64,
-    mie: u64,
-    mcycle: u64,
-    minstret: u64,
-    mcounteren: u32,
-    mcountinhibit: u32,
-    mscratch: u64,
-    mepc: u64,
-    mcause: u64,
-    mtval: u64,
-    menvcfg: u64,
-    mseccfg: u64,
-    mtime: u64,
-    mtimecmp: u64,
+    machine_csrs: MachineCsrs,
 
     waiting: bool,
 
@@ -125,23 +110,8 @@ impl Emulator {
 
             trap: None,
 
-            misa: 2 << 62 | 0b00000100000001000100000101,
-            mstatus: 0,
-            mtvec: 0,
-            mip: 0,
-            mie: 0,
-            mcycle: 0,
-            minstret: 0,
-            mcounteren: 0,
-            mcountinhibit: 0,
-            mscratch: 0,
-            mepc: 0,
-            mcause: 0,
-            mtval: 0,
-            menvcfg: 0,
-            mseccfg: 0,
-            mtime: 0,
-            mtimecmp: 0,
+            machine_csrs: MachineCsrs::default(),
+
             waiting: false,
 
             privilege: Privilege::Machine,
@@ -175,16 +145,18 @@ impl Emulator {
 
     fn handle_traps(&mut self, pc: u64) {
         if let Some(trap) = self.trap {
-            self.mepc = pc;
-            self.mcause = trap;
-            self.pc = self.mtvec;
+            self.machine_csrs.mepc = pc;
+            self.machine_csrs.mcause = trap;
+            self.pc = self.machine_csrs.mtvec;
             self.trap = None;
             // set MPP to the current privilege level;
-            self.mstatus = (self.mstatus & !(3 << 11)) | u64::from(self.privilege) << 11;
+            self.machine_csrs.mstatus =
+                (self.machine_csrs.mstatus & !(3 << 11)) | u64::from(self.privilege) << 11;
             // set MPIE to MIE
-            self.mstatus = (self.mstatus & !(0x80)) | (self.mstatus & 0x8) << 4;
+            self.machine_csrs.mstatus =
+                (self.machine_csrs.mstatus & !(0x80)) | (self.machine_csrs.mstatus & 0x8) << 4;
             // Set MIE to 0
-            self.mstatus &= !0x8;
+            self.machine_csrs.mstatus &= !0x8;
             // Traps by default are handled by M mode, but when S mode is implemented this must be
             // changed.
             self.privilege = Privilege::Machine;
@@ -199,23 +171,23 @@ impl Emulator {
     fn set_trap(&mut self, trap: Trap, opcode: u64) {
         self.set_mtrap(trap);
         match trap {
-            Trap::InstrAddrMisaligned => self.mtval = 0,
-            Trap::InstrAccessFault => self.mtval = 0,
-            Trap::IllegalInstruction => self.mtval = opcode,
-            Trap::Breakpoint => self.mtval = 0,
-            Trap::LoadAccessFault => self.mtval = 0,
-            Trap::StoreAccessFault => self.mtval = 0,
-            Trap::ECallU => self.mtval = 0,
-            Trap::ECallM => self.mtval = 0,
+            Trap::InstrAddrMisaligned => self.machine_csrs.mtval = 0,
+            Trap::InstrAccessFault => self.machine_csrs.mtval = 0,
+            Trap::IllegalInstruction => self.machine_csrs.mtval = opcode,
+            Trap::Breakpoint => self.machine_csrs.mtval = 0,
+            Trap::LoadAccessFault => self.machine_csrs.mtval = 0,
+            Trap::StoreAccessFault => self.machine_csrs.mtval = 0,
+            Trap::ECallU => self.machine_csrs.mtval = 0,
+            Trap::ECallM => self.machine_csrs.mtval = 0,
         }
     }
 
     fn increment_counters(&mut self) {
-        if self.mcountinhibit & 1 == 0 {
-            self.mcycle += 1;
+        if self.machine_csrs.mcountinhibit & 1 == 0 {
+            self.machine_csrs.mcycle += 1;
         }
-        if self.mcountinhibit & 4 == 0 {
-            self.minstret += 1;
+        if self.machine_csrs.mcountinhibit & 4 == 0 {
+            self.machine_csrs.minstret += 1;
         }
     }
 
@@ -225,7 +197,7 @@ impl Emulator {
             if opcode & 0b11 == 0b11 {
                 let Ok(opcode) = self.read_u32(self.pc as usize) else {
                     self.set_trap(Trap::InstrAccessFault, 0);
-                    self.mtval = 0;
+                    self.machine_csrs.mtval = 0;
                     return;
                 };
 
@@ -251,4 +223,3 @@ impl Emulator {
         self.handle_traps(pc);
     }
 }
-
