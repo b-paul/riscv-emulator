@@ -7,7 +7,7 @@ use crate::{
 };
 
 impl Emulator {
-    pub(crate) fn execute_base(&mut self, instruction: BaseInstruction) -> Result<(), Trap> {
+    pub fn execute_base(&mut self, instruction: BaseInstruction) -> Result<(), Trap> {
         if self.machine_csrs.misa & 1 << 8 == 0 {
             return Err(Trap::IllegalInstruction);
         }
