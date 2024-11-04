@@ -4,7 +4,7 @@ use crate::{
 };
 
 impl Emulator {
-    pub(crate) fn execute_mul(&mut self, instruction: MulInstruction) -> Result<(), Trap> {
+    pub fn execute_mul(&mut self, instruction: MulInstruction) -> Result<(), Trap> {
         if self.machine_csrs.misa & 1 << 12 == 0 {
             return Err(Trap::IllegalInstruction);
         }

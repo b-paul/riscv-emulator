@@ -10,10 +10,12 @@ mod instructions;
 mod interpret;
 mod mem;
 pub mod tester;
+mod trap;
 
 use csr::MachineCsrs;
 use device::{Device, DeviceRegister};
 use mem::Memory;
+use trap::Trap;
 
 use instructions::Instruction;
 
@@ -46,33 +48,6 @@ impl From<Privilege> for u64 {
 
 // TODO
 // enums for CSRs ?!
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-enum Trap {
-    InstrAddrMisaligned,
-    InstrAccessFault,
-    IllegalInstruction,
-    Breakpoint,
-    LoadAccessFault,
-    StoreAccessFault,
-    ECallU,
-    ECallM,
-}
-
-impl Trap {
-    fn to_code(self) -> u64 {
-        match self {
-            Trap::InstrAddrMisaligned => 0,
-            Trap::InstrAccessFault => 1,
-            Trap::IllegalInstruction => 2,
-            Trap::Breakpoint => 3,
-            Trap::LoadAccessFault => 5,
-            Trap::StoreAccessFault => 7,
-            Trap::ECallU => 8,
-            Trap::ECallM => 11,
-        }
-    }
-}
 
 pub struct Emulator {
     memory: Memory,
