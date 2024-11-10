@@ -232,7 +232,34 @@ pub enum Instruction {
     Atomic(AtomicInstruction),
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Extension {
+    Atomic,
+    BitManip,
+    Compressed,
+    Double,
+    Embedded,
+    Float,
+    Hypervisor,
+    Base,
+    Multiply,
+    Quad,
+    Supervisor,
+    User,
+    Vector,
+}
+
 impl Instruction {
+    pub fn extension(&self) -> Option<Extension> {
+        match self {
+            Instruction::Base(_) => Some(Extension::Base),
+            Instruction::Machine(_) => None,
+            Instruction::Zicsr(_) => None,
+            Instruction::Mul(_) => Some(Extension::Multiply),
+            Instruction::Atomic(_) => Some(Extension::Atomic),
+        }
+    }
+
     pub fn parse_compressed(instruction: u16) -> Option<Instruction> {
         let opcode = instruction & 0x3;
         let funct3 = (instruction >> 13) & 0x7;

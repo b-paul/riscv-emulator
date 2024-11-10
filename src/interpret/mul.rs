@@ -5,9 +5,6 @@ use crate::{
 
 impl Emulator {
     pub fn execute_mul(&mut self, instruction: MulInstruction) -> Result<(), Trap> {
-        if self.machine_csrs.misa & 1 << 12 == 0 {
-            return Err(Trap::IllegalInstruction);
-        }
         match instruction {
             MulInstruction::Reg64(op, i) => {
                 let a = self.x[i.rs1];

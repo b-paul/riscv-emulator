@@ -1,4 +1,4 @@
-use crate::{Emulator, Privilege};
+use crate::{instructions::Extension, Emulator, Instruction, Privilege};
 
 pub struct MachineCsrs {
     pub misa: u64,
@@ -41,6 +41,34 @@ impl Default for MachineCsrs {
             mtime: 0,
             mtimecmp: 0,
         }
+    }
+}
+
+impl MachineCsrs {
+    /// Determine the index into the `misa` bitfield an instruction indexes into.
+    fn misa_index(instruction: Extension) -> u64 {
+        match instruction {
+            Extension::Atomic => 0,
+            Extension::BitManip => 1,
+            Extension::Compressed => 2,
+            Extension::Double => 3,
+            Extension::Embedded => 4,
+            Extension::Float => 5,
+            Extension::Hypervisor => 7,
+            Extension::Base => 8,
+            Extension::Multiply => 12,
+            Extension::Quad => 16,
+            Extension::Supervisor => 18,
+            Extension::User => 20,
+            Extension::Vector => 21,
+        }
+    }
+
+    /// Determines whether an instruction is enabled in the `misa` csr.
+    pub fn can_exec(&self, instruction: &Instruction) -> bool {
+        instruction
+            .extension()
+            .is_none_or(|extension| self.misa & 1 << MachineCsrs::misa_index(extension) != 0)
     }
 }
 

@@ -8,9 +8,6 @@ use crate::{
 
 impl Emulator {
     pub fn execute_base(&mut self, instruction: BaseInstruction) -> Result<(), Trap> {
-        if self.machine_csrs.misa & 1 << 8 == 0 {
-            return Err(Trap::IllegalInstruction);
-        }
         match instruction {
             BaseInstruction::Lui(i) => self.x[i.rd] = i.imm as i64 as u64,
             BaseInstruction::Auipc(i) => self.x[i.rd] = self.pc.wrapping_add(i.imm as i64 as u64),

@@ -14,9 +14,6 @@ impl Emulator {
             instr,
         }: AtomicInstruction,
     ) -> Result<(), Trap> {
-        if self.machine_csrs.misa & 1 == 0 {
-            return Err(Trap::IllegalInstruction);
-        }
         let addr = self.x[instr.rs1] as usize;
         match op {
             AOp::Mem(op) => match op {
