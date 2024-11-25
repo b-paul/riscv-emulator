@@ -6,6 +6,17 @@ use riscv::{Emulator, device::Device, tester::Tester};
 fn main() {
     let path = std::env::args().nth(1).unwrap();
 
+    let mut emu = Emulator::new(128 * 1024 * 1024);
+
+    emu.load_binary(&path, 0x1000).unwrap();
+
+    let tester_addr = 0x3000;
+
+    let tester = Rc::new(RefCell::new(Tester::new(tester_addr)));
+
+    emu.add_device(tester.clone() as Rc<RefCell<dyn Device>>);
+
+    /*
     for entry in std::fs::read_dir(path).unwrap().flatten() {
         let name = entry.file_name();
         let name = name.to_str().unwrap();
@@ -39,4 +50,5 @@ fn main() {
             }
         }
     }
+    */
 }
