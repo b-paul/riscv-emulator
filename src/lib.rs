@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicUsize;
 
 mod csr;
 pub mod device;
+mod elf;
 mod instructions;
 mod interpret;
 mod mem;
@@ -104,6 +105,8 @@ impl Emulator {
         let mut file = std::fs::File::open(file_name)?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
+        let elf = elf::Elf::read_elf(&buf);
+        println!("Elf: {elf:?}");
         self.memory.write_bytes(0, &buf).unwrap();
         self.pc = entry_point;
         Ok(())
