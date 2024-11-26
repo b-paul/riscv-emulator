@@ -7,6 +7,8 @@ pub struct Memory {
     size: usize,
 }
 
+pub const RAM_BASE: usize = 0x80000000;
+
 impl Memory {
     pub fn new(size: usize) -> Memory {
         Memory {
@@ -20,6 +22,7 @@ impl Memory {
     }
 
     pub fn write_bytes(&mut self, mut addr: usize, bytes: &[u8]) -> Result<(), AccessFault> {
+        // TODO bounds check before writing anything maybe
         for &b in bytes {
             *self.bytes.get_mut(addr).ok_or(AccessFault::Store)? = b;
             addr += 1;
@@ -62,7 +65,8 @@ impl Emulator {
                     0x0 => todo!("msip"),
                     _ => todo!("Slave bus error on invalid access or misaligned read"),
                 },
-                _ => Ok(Cow::from(self.memory.read_bytes(addr, count)?)),
+                RAM_BASE.. => Ok(Cow::from(self.memory.read_bytes(addr - RAM_BASE, count)?)),
+                _ => Err(AccessFault::Load),
             }
         }
     }
@@ -121,7 +125,8 @@ impl Emulator {
                         _ => todo!("Slave bus error on invalid access or misaligned write"),
                     }
                 }
-                _ => self.memory.write_bytes(addr, bytes)?,
+                RAM_BASE => self.memory.write_bytes(addr - RAM_BASE, bytes)?,
+                _ => Err(AccessFault::Store)?,
             }
         }
         Ok(())
