@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicUsize;
 
 mod csr;
 pub mod device;
-mod elf;
+pub mod elf;
 mod instructions;
 mod interpret;
 mod mem;
@@ -101,15 +101,15 @@ impl Emulator {
         }
     }
 
-    pub fn load_binary(&mut self, file_name: &str, entry_point: u64) -> std::io::Result<()> {
+    pub fn load_binary(&mut self, file_name: &str) -> std::io::Result<elf::Elf> {
         let mut file = std::fs::File::open(file_name)?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
-        let elf = elf::Elf::read_elf(&buf);
-        println!("Elf: {elf:?}");
-        self.memory.write_bytes(0, &buf).unwrap();
-        self.pc = entry_point;
-        Ok(())
+        // TODO handle this error better
+        let elf = elf::Elf::new(&buf).unwrap();
+        self.write_bytes(mem::RAM_BASE, &buf[0x1000..]).unwrap();
+        self.pc = elf.get_entry() as u64;
+        Ok(elf)
     }
 
     pub fn add_device(&mut self, device: Rc<RefCell<dyn Device>>) {
@@ -199,5 +199,24 @@ impl Emulator {
         let pc = self.pc;
         self.pc = self.pc.wrapping_add(offset);
         self.handle_traps(pc);
+    }
+
+    /// Write a signature file at the specified path, given that the signature sits between the
+    /// start and end addresses.
+    ///
+    /// The signature format is specified [here](https://github.com/riscv/riscv-arch-test/blob/master/spec/TestFormatSpec.adoc#36-the-test-signature).
+    pub fn write_signature(&self, path: &str, start: usize, end: usize) -> std::io::Result<()> {
+        // TODO unwrap sorry :(((
+        use std::io::prelude::*;
+        let mut file = std::fs::File::create(path)?;
+        let bytes = self.read_bytes(start, end - start).unwrap();
+        for line in bytes.chunks(4) {
+            assert!(line.len() <= 4);
+            for i in (0..4).rev() {
+                write!(&mut file, "{:02x}", line.get(i).unwrap_or(&0))?;
+            }
+            writeln!(&mut file, "")?;
+        }
+        Ok(())
     }
 }

@@ -3,15 +3,81 @@
 // Give error messages to errors
 // Finish writing docs for everything
 
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Elf {
+    /// Mapping from symbol name to offset
+    // TODO is taking an owned String necessary?
+    symbol_table: HashMap<String, Symbol>,
+    /// Entry point into the program (as an address)
+    entry_point: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Symbol {
+    pub value: usize,
+    pub size: usize,
+    // TODO the rest
+}
+
+impl Elf {
+    pub fn new(bin: &[u8]) -> Result<Elf, ElfParseError> {
+        let read_elf = ReadElf::read_elf(bin)?;
+
+        let sym_table_idx = read_elf
+            .find_sh_index(".symtab")
+            .ok_or(ElfParseError::NoStringTable)?;
+        let str_table_idx = read_elf
+            .find_sh_index(".strtab")
+            .ok_or(ElfParseError::NoStringTable)?;
+
+        let read_symbol_table = match &read_elf.section_headers[sym_table_idx].contents {
+            SectionHeaderContents::SymbolTable(vec) => vec,
+            _ => return Err(ElfParseError::InvalidSectionHeader),
+        };
+
+        let symbol_table = read_symbol_table
+            .iter()
+            .map(|entry| {
+                let name = read_elf
+                    .read_str_at(entry.name as usize, str_table_idx)
+                    .map_err(|e| ElfParseError::Utf8Error(e))?
+                    .to_owned();
+                let symbol = Symbol {
+                    value: entry.value,
+                    size: entry.size,
+                };
+                Ok((name, symbol))
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(Elf {
+            symbol_table,
+            entry_point: read_elf.header.entry,
+        })
+    }
+
+    /// Returns the entry point of the program
+    pub fn get_entry(&self) -> usize {
+        self.entry_point
+    }
+
+    /// Get the symbol with the corresponding name `name`, if it exists
+    pub fn get_symbol(&self, name: &str) -> Option<&Symbol> {
+        self.symbol_table.get(name)
+    }
+}
+
 /// Contains all (relevant) information that can be obtained from the ELF header of a binary.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Elf {
+struct ReadElf {
     header: ElfHeader,
     program_headers: Vec<ProgramHeader>,
     section_headers: Vec<SectionHeader>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElfParseError {
     InvalidIdentifier,
     InvalidProgramHeader,
@@ -20,19 +86,50 @@ pub enum ElfParseError {
     Unsupported,
     NotExecutable,
     InvalidAddressSize,
+    NoStringTable,
+    Utf8Error(std::str::Utf8Error),
 }
 
-impl Elf {
-    pub fn read_elf(bin: &[u8]) -> Result<Elf, ElfParseError> {
+impl ReadElf {
+    pub fn read_elf(bin: &[u8]) -> Result<ReadElf, ElfParseError> {
         let header = ElfHeader::read_elf_header(bin)?;
         let program_headers = ProgramHeader::read_program_headers(bin, &header)?;
         let section_headers = SectionHeader::read_section_headers(bin, &header)?;
 
-        Ok(Elf {
+        if !matches!(
+            section_headers[header.sh_str_table_idx].contents,
+            SectionHeaderContents::StringTable(_)
+        ) {
+            return Err(ElfParseError::InvalidSectionHeader);
+        }
+
+        Ok(ReadElf {
             header,
             program_headers,
             section_headers,
         })
+    }
+
+    fn find_sh_index(&self, header: &str) -> Option<usize> {
+        self.section_headers.iter().position(|sh| {
+            self.read_str_at(sh.name as usize, self.header.sh_str_table_idx) == Ok(header)
+        })
+    }
+
+    /// Read the string at index `idx` in the string table at index table_idx.
+    fn read_str_at(&self, idx: usize, table_idx: usize) -> Result<&str, std::str::Utf8Error> {
+        match &self.section_headers[table_idx].contents {
+            SectionHeaderContents::StringTable(vec) => {
+                let str = &vec[idx..];
+                let end = str
+                    .iter()
+                    .position(|&b| b == 0)
+                    .expect("Invalid Elf created");
+                std::str::from_utf8(&str[..end])
+            }
+            // TODO this should probably be an error case
+            _ => panic!("Invalid table_idx passed"),
+        }
     }
 }
 
@@ -90,7 +187,7 @@ struct ElfHeader {
     /// The number of section header table entries
     s_entry_count: usize,
     /// THe index into the section header table corresponding to the section name string table.
-    str_table_idx: usize,
+    sh_str_table_idx: usize,
 }
 
 impl ElfHeader {
@@ -121,7 +218,7 @@ impl ElfHeader {
         // TODO account for this being zero while we have a section header table
         let (bin, s_entry_count) = read_u16(&bin)?;
         // TODO account for this being SHN_XINDEX when the string table index is past 0xff00
-        let (_bin, str_table_idx) = read_u16(&bin)?;
+        let (_bin, sh_str_table_idx) = read_u16(&bin)?;
 
         // Check the elf is an executable (ET_EXEL = 2)
         // TODO confirm we actually only want to support executables
@@ -160,7 +257,7 @@ impl ElfHeader {
         let s_entry_count = s_entry_count
             .try_into()
             .map_err(|_| ElfParseError::InvalidAddressSize)?;
-        let str_table_idx = str_table_idx
+        let sh_str_table_idx = sh_str_table_idx
             .try_into()
             .map_err(|_| ElfParseError::InvalidAddressSize)?;
 
@@ -173,7 +270,7 @@ impl ElfHeader {
             p_entry_count,
             s_entry_size,
             s_entry_count,
-            str_table_idx,
+            sh_str_table_idx,
         })
     }
 }
@@ -474,7 +571,7 @@ impl SectionHeader {
                             return Err(ElfParseError::InvalidSectionHeader);
                         }
                         SectionHeaderContents::StringTable(bin[offset..offset + size].to_owned())
-                    },
+                    }
                     SectionHeaderType::RelocationEntries => SectionHeaderContents::None,
                     SectionHeaderType::HashTable => SectionHeaderContents::None,
                     SectionHeaderType::Dynamic => SectionHeaderContents::None,
