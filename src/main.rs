@@ -27,9 +27,6 @@ fn main() {
     let tester_addr = elf.get_symbol("tohost").unwrap().value;
     let signature_start = elf.get_symbol("begin_signature").unwrap().value;
     let signature_end = elf.get_symbol("end_signature").unwrap().value;
-    println!("tester_addr: {:x}", tester_addr);
-    println!("signature_start: {:x}", signature_start);
-    println!("signature_end: {:x}", signature_end);
 
     let tester = Rc::new(RefCell::new(Tester::new(tester_addr)));
 

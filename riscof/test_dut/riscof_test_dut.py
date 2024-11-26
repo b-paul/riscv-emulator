@@ -160,7 +160,7 @@ class test_dut(pluginTemplate):
             # set up the simulation command. Template is for spike. Please change.
             # TODO
             #simcmd = self.dut_exe + ' --isa={0} +signature={1} +signature-granularity=4 {2}'.format(self.isa, sig_file, elf)
-            simcmd = self.dut_exe + ' --signature {1} {2}'.format(sig_file, elf)
+            simcmd = self.dut_exe + ' --signature {0} {1}'.format(sig_file, elf)
           else:
             simcmd = 'echo "NO RUN"'
 
