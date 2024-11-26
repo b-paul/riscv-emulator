@@ -16,7 +16,7 @@ from riscof.pluginTemplate import pluginTemplate
 
 logger = logging.getLogger()
 
-class test-dut(pluginTemplate):
+class test_dut(pluginTemplate):
     __model__ = "riscv"
 
     #TODO: please update the below to indicate family, version, etc of your DUT.
@@ -92,7 +92,7 @@ class test-dut(pluginTemplate):
       # will be useful in setting integer value in the compiler string (if not already hardcoded);
       self.xlen = ('64' if 64 in ispec['supported_xlen'] else '32')
 
-      # for test-dut start building the '--isa' argument. the self.isa is dutnmae specific and may not be
+      # for test_dut start building the '--isa' argument. the self.isa is dutnmae specific and may not be
       # useful for all DUTs
       self.isa = 'rv' + self.xlen
       if "I" in ispec["ISA"]:
