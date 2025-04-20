@@ -13,6 +13,9 @@ struct Args {
     /// Path to a signature file to output (when running riscof tests)
     #[arg(long)]
     signature: String,
+    /// Run debug mode, where each cycle is  stepped through manually
+    #[arg(short, long)]
+    debug: bool,
 }
 
 fn main() {
@@ -39,6 +42,15 @@ fn main() {
             emu.write_signature(&args.signature, signature_start, signature_end)
                 .unwrap();
             break;
+        }
+
+        if args.debug {
+            emu.debug();
+
+            use std::io::BufRead;
+            let mut b = String::new();
+            let mut h = std::io::stdin().lock();
+            h.read_line(&mut b).unwrap();
         }
     }
 

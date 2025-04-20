@@ -1,5 +1,6 @@
 use crate::{instructions::Extension, Emulator, Instruction, Privilege};
 
+#[derive(Debug)]
 pub struct MachineCsrs {
     pub misa: u64,
     pub mstatus: u64,
