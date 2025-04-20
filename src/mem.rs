@@ -125,7 +125,7 @@ impl Emulator {
                         _ => todo!("Slave bus error on invalid access or misaligned write"),
                     }
                 }
-                RAM_BASE => self.memory.write_bytes(addr - RAM_BASE, bytes)?,
+                RAM_BASE.. => self.memory.write_bytes(addr - RAM_BASE, bytes)?,
                 _ => Err(AccessFault::Store)?,
             }
         }

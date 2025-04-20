@@ -12,7 +12,7 @@ impl Emulator {
             BaseInstruction::Lui(i) => self.x[i.rd] = i.imm as i64 as u64,
             BaseInstruction::Auipc(i) => self.x[i.rd] = self.pc.wrapping_add(i.imm as i64 as u64),
             BaseInstruction::Jal(i, compressed) => {
-                let offset = (i.imm << 12 >> 12) as i64;
+                let offset = (i.imm << 11 >> 11) as i64;
                 let instroff = if compressed { 2 } else { 4 };
                 if offset % 2 != 0 {
                     // We are jumping to a misaligned address, so we throw an instruction address

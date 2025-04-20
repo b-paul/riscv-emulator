@@ -109,7 +109,40 @@ impl Emulator {
         let elf = elf::Elf::new(&buf).unwrap();
         self.write_bytes(mem::RAM_BASE, &buf[0x1000..]).unwrap();
         self.pc = elf.get_entry() as u64;
+        // mtvec can be anything so I shall make it what I need to make these darn riscof tests
+        // work!
+        self.machine_csrs.mtvec =
+            elf.get_symbol("exit_cleanup").map(|s| s.value).unwrap_or(0) as u64;
         Ok(elf)
+    }
+
+    pub fn debug(&self) {
+        println!("{:x}", self.pc);
+
+        // copy pasted
+        let instruction = if let Ok(opcode) = self.read_u16(self.pc as usize) {
+            if opcode & 0b11 == 0b11 {
+                let Ok(opcode) = self.read_u32(self.pc as usize) else {
+                    return;
+                };
+
+                match Instruction::parse(opcode) {
+                    Some(instruction) => instruction,
+                    None => return,
+                }
+            } else {
+                match Instruction::parse_compressed(opcode) {
+                    Some(instruction) => instruction,
+                    None => return,
+                }
+            }
+        } else {
+            return;
+        };
+        println!("{:?}", self.privilege);
+        println!("{:?}", instruction);
+        println!("{:?}", self.x);
+        println!("{:?}", self.machine_csrs);
     }
 
     pub fn add_device(&mut self, device: Rc<RefCell<dyn Device>>) {
