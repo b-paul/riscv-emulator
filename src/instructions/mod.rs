@@ -172,11 +172,13 @@ impl BType {
         BType {
             rs1: (instruction >> 7 & 7) as usize + 8,
             rs2: 0,
-            imm: (instruction >> 2 & 0x6
+            imm: (((instruction >> 2 & 0x6
                 | instruction >> 7 & 0x18
                 | instruction << 3 & 0x20
                 | instruction << 1 & 0xc0
-                | instruction >> 4 & 0x100),
+                | instruction >> 4 & 0x100) as i16)
+                << 7
+                >> 7) as u16,
         }
     }
 }
@@ -211,14 +213,14 @@ impl JType {
     fn cj(instruction: u16, rd: usize) -> Self {
         JType {
             rd,
-            imm: (instruction >> 2 & 0x6
+            imm: (((instruction >> 2 & 0xe
                 | instruction >> 7 & 0x10
                 | instruction << 3 & 0x20
                 | instruction >> 1 & 0x40
                 | instruction << 1 & 0x80
                 | instruction >> 1 & 0x300
                 | instruction << 2 & 0x400
-                | instruction >> 1 & 0x800) as i16 as i32,
+                | instruction >> 1 & 0x800) as i16) << 4 >> 4) as i32,
         }
     }
 }
@@ -495,41 +497,34 @@ impl Instruction {
                         let rs1 = (instruction >> 7 & 0x1f) as usize;
                         let rs2 = (instruction >> 2 & 0x1f) as usize;
                         let funct4 = (instruction >> 12 & 0x1) == 1;
-                        if rs1 == 0 {
-                            None
-                        } else {
-                            match (rs1 == 0, rs2 == 0, funct4) {
-                                // C.JR
-                                (false, true, false) => Some(Instruction::Base(
-                                    BaseInstruction::Jalr(IType { rd: 0, rs1, imm: 0 }, true),
-                                )),
-                                // C.JALR
-                                (false, true, true) => Some(Instruction::Base(
-                                    BaseInstruction::Jalr(IType { rd: 1, rs1, imm: 0 }, true),
-                                )),
-                                // C.MV
-                                (false, false, false) => {
-                                    Some(Instruction::Base(BaseInstruction::Reg64(
-                                        BRegister64::Add,
-                                        RType {
-                                            rd: rs1,
-                                            rs1: 0,
-                                            rs2,
-                                        },
-                                    )))
-                                }
-                                // C.ADD
-                                (false, false, true) => {
-                                    Some(Instruction::Base(BaseInstruction::Reg64(
-                                        BRegister64::Add,
-                                        RType { rd: rs1, rs1, rs2 },
-                                    )))
-                                }
-                                (true, true, true) => {
-                                    Some(Instruction::Base(BaseInstruction::Ecall))
-                                }
-                                _ => None,
-                            }
+                        match (rs1 == 0, rs2 == 0, funct4) {
+                            // C.JR
+                            (false, true, false) => Some(Instruction::Base(BaseInstruction::Jalr(
+                                IType { rd: 0, rs1, imm: 0 },
+                                true,
+                            ))),
+                            // C.JALR
+                            (false, true, true) => Some(Instruction::Base(BaseInstruction::Jalr(
+                                IType { rd: 1, rs1, imm: 0 },
+                                true,
+                            ))),
+                            // C.MV (rd=0 hint)
+                            (_, false, false) => Some(Instruction::Base(BaseInstruction::Reg64(
+                                BRegister64::Add,
+                                RType {
+                                    rd: rs1,
+                                    rs1: 0,
+                                    rs2,
+                                },
+                            ))),
+                            // C.ADD (rd=0 hint)
+                            (_, false, true) => Some(Instruction::Base(BaseInstruction::Reg64(
+                                BRegister64::Add,
+                                RType { rd: rs1, rs1, rs2 },
+                            ))),
+                            // C.EBREAK
+                            (true, true, true) => Some(Instruction::Base(BaseInstruction::Ebreak)),
+                            _ => None,
                         }
                     }
                     0b000 => Some(Instruction::Base(BaseInstruction::Imm64(
