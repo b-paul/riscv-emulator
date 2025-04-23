@@ -185,7 +185,7 @@ impl Emulator {
             Trap::InstrAddrMisaligned => self.machine_csrs.mtval = 0,
             Trap::InstrAccessFault => self.machine_csrs.mtval = 0,
             Trap::IllegalInstruction => self.machine_csrs.mtval = opcode,
-            Trap::Breakpoint => self.machine_csrs.mtval = 0,
+            Trap::Breakpoint => self.machine_csrs.mtval = self.pc,
             Trap::LoadAccessFault => self.machine_csrs.mtval = 0,
             Trap::StoreAccessFault => self.machine_csrs.mtval = 0,
             Trap::ECallU => self.machine_csrs.mtval = 0,
@@ -239,6 +239,7 @@ impl Emulator {
     ///
     /// The signature format is specified [here](https://github.com/riscv/riscv-arch-test/blob/master/spec/TestFormatSpec.adoc#36-the-test-signature).
     pub fn write_signature(&self, path: &str, start: usize, end: usize) -> std::io::Result<()> {
+        // TODO should I perhaps not be passing a &str and instead be passing a File ?
         // TODO unwrap sorry :(((
         use std::io::prelude::*;
         let mut file = std::fs::File::create(path)?;

@@ -36,14 +36,6 @@ fn main() {
     emu.add_device(tester.clone() as Rc<RefCell<dyn Device>>);
 
     loop {
-        emu.cycle();
-        if let Some(code) = tester.borrow().get_exit_code() {
-            println!("{code}");
-            emu.write_signature(&args.signature, signature_start, signature_end)
-                .unwrap();
-            break;
-        }
-
         if args.debug {
             emu.debug();
 
@@ -51,6 +43,14 @@ fn main() {
             let mut b = String::new();
             let mut h = std::io::stdin().lock();
             h.read_line(&mut b).unwrap();
+        }
+
+        emu.cycle();
+        if let Some(code) = tester.borrow().get_exit_code() {
+            println!("{code}");
+            emu.write_signature(&args.signature, signature_start, signature_end)
+                .unwrap();
+            break;
         }
     }
 
