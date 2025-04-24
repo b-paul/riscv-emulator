@@ -23,7 +23,7 @@ pub struct Symbol {
 
 impl Elf {
     pub fn new(bin: &[u8]) -> Result<Elf, ElfParseError> {
-        let read_elf = ReadElf::read_elf(bin)?;
+        let read_elf = ReadElf::read(bin)?;
 
         let sym_table_idx = read_elf
             .find_sh_index(".symtab")
@@ -42,7 +42,7 @@ impl Elf {
             .map(|entry| {
                 let name = read_elf
                     .read_str_at(entry.name as usize, str_table_idx)
-                    .map_err(|e| ElfParseError::Utf8Error(e))?
+                    .map_err(ElfParseError::Utf8Error)?
                     .to_owned();
                 let symbol = Symbol {
                     value: entry.value,
@@ -91,7 +91,7 @@ pub enum ElfParseError {
 }
 
 impl ReadElf {
-    pub fn read_elf(bin: &[u8]) -> Result<ReadElf, ElfParseError> {
+    pub fn read(bin: &[u8]) -> Result<ReadElf, ElfParseError> {
         let header = ElfHeader::read_elf_header(bin)?;
         let program_headers = ProgramHeader::read_program_headers(bin, &header)?;
         let section_headers = SectionHeader::read_section_headers(bin, &header)?;
@@ -134,7 +134,7 @@ impl ReadElf {
 }
 
 fn read_u8(bytes: &[u8]) -> Result<(&[u8], u8), ElfParseError> {
-    if bytes.len() < 1 {
+    if bytes.is_empty() {
         return Err(ElfParseError::TooSmall);
     }
     Ok((&bytes[1..], bytes[0]))
@@ -202,23 +202,23 @@ impl ElfHeader {
 
         let bin = &bin[16..];
 
-        let (bin, typ) = read_u16(&bin)?;
-        let (bin, machine) = read_u16(&bin)?;
-        let (bin, version) = read_u32(&bin)?;
-        let (bin, entry) = read_u64(&bin)?;
-        let (bin, phoff) = read_u64(&bin)?;
-        let (bin, shoff) = read_u64(&bin)?;
-        let (bin, flags) = read_u32(&bin)?;
+        let (bin, typ) = read_u16(bin)?;
+        let (bin, machine) = read_u16(bin)?;
+        let (bin, version) = read_u32(bin)?;
+        let (bin, entry) = read_u64(bin)?;
+        let (bin, phoff) = read_u64(bin)?;
+        let (bin, shoff) = read_u64(bin)?;
+        let (bin, flags) = read_u32(bin)?;
         // TODO do i need this ?
-        let (bin, _header_size) = read_u16(&bin)?;
-        let (bin, p_entry_size) = read_u16(&bin)?;
+        let (bin, _header_size) = read_u16(bin)?;
+        let (bin, p_entry_size) = read_u16(bin)?;
         // TODO account for p_entry_count being PN_XNUM (more than u16::MAX)
-        let (bin, p_entry_count) = read_u16(&bin)?;
-        let (bin, s_entry_size) = read_u16(&bin)?;
+        let (bin, p_entry_count) = read_u16(bin)?;
+        let (bin, s_entry_size) = read_u16(bin)?;
         // TODO account for this being zero while we have a section header table
-        let (bin, s_entry_count) = read_u16(&bin)?;
+        let (bin, s_entry_count) = read_u16(bin)?;
         // TODO account for this being SHN_XINDEX when the string table index is past 0xff00
-        let (_bin, sh_str_table_idx) = read_u16(&bin)?;
+        let (_bin, sh_str_table_idx) = read_u16(bin)?;
 
         // Check the elf is an executable (ET_EXEL = 2)
         // TODO confirm we actually only want to support executables
@@ -245,21 +245,11 @@ impl ElfHeader {
         let shoff = shoff
             .try_into()
             .map_err(|_| ElfParseError::InvalidAddressSize)?;
-        let p_entry_size = p_entry_size
-            .try_into()
-            .map_err(|_| ElfParseError::InvalidAddressSize)?;
-        let p_entry_count = p_entry_count
-            .try_into()
-            .map_err(|_| ElfParseError::InvalidAddressSize)?;
-        let s_entry_size = s_entry_size
-            .try_into()
-            .map_err(|_| ElfParseError::InvalidAddressSize)?;
-        let s_entry_count = s_entry_count
-            .try_into()
-            .map_err(|_| ElfParseError::InvalidAddressSize)?;
-        let sh_str_table_idx = sh_str_table_idx
-            .try_into()
-            .map_err(|_| ElfParseError::InvalidAddressSize)?;
+        let p_entry_size = p_entry_size.into();
+        let p_entry_count = p_entry_count.into();
+        let s_entry_size = s_entry_size.into();
+        let s_entry_count = s_entry_count.into();
+        let sh_str_table_idx = sh_str_table_idx.into();
 
         Ok(ElfHeader {
             entry,
@@ -370,14 +360,14 @@ impl ProgramHeader {
         (0..header.p_entry_count)
             .map(|i| {
                 let header = &bin[header.phoff + i * header.p_entry_size..];
-                let (header, typ) = read_u32(&header)?;
-                let (header, flags) = read_u32(&header)?;
-                let (header, offset) = read_u64(&header)?;
-                let (header, vaddr) = read_u64(&header)?;
-                let (header, paddr) = read_u64(&header)?;
-                let (header, file_size) = read_u64(&header)?;
-                let (header, mem_size) = read_u64(&header)?;
-                let (_header, align) = read_u64(&header)?;
+                let (header, typ) = read_u32(header)?;
+                let (header, flags) = read_u32(header)?;
+                let (header, offset) = read_u64(header)?;
+                let (header, vaddr) = read_u64(header)?;
+                let (header, paddr) = read_u64(header)?;
+                let (header, file_size) = read_u64(header)?;
+                let (header, mem_size) = read_u64(header)?;
+                let (_header, align) = read_u64(header)?;
 
                 let typ = match typ {
                     0 => Ok(ProgramHeaderType::Null),
@@ -480,16 +470,16 @@ impl SectionHeader {
         (0..header.s_entry_count)
             .map(|i| {
                 let header = &bin[header.shoff + i * header.s_entry_size..];
-                let (header, name) = read_u32(&header)?;
-                let (header, typ) = read_u32(&header)?;
-                let (header, flags) = read_u64(&header)?;
-                let (header, addr) = read_u64(&header)?;
-                let (header, offset) = read_u64(&header)?;
-                let (header, size) = read_u64(&header)?;
-                let (header, link) = read_u32(&header)?;
-                let (header, info) = read_u32(&header)?;
-                let (header, addralign) = read_u64(&header)?;
-                let (_header, entsize) = read_u64(&header)?;
+                let (header, name) = read_u32(header)?;
+                let (header, typ) = read_u32(header)?;
+                let (header, flags) = read_u64(header)?;
+                let (header, addr) = read_u64(header)?;
+                let (header, offset) = read_u64(header)?;
+                let (header, size) = read_u64(header)?;
+                let (header, link) = read_u32(header)?;
+                let (header, info) = read_u32(header)?;
+                let (header, addralign) = read_u64(header)?;
+                let (_header, entsize) = read_u64(header)?;
 
                 let typ = match typ {
                     0 => Ok(SectionHeaderType::Null),
@@ -537,16 +527,14 @@ impl SectionHeader {
                             (0..count)
                                 .map(|i| {
                                     let entry = &table[i * entsize..];
-                                    let (entry, name) = read_u32(&entry)?;
-                                    let (entry, info) = read_u8(&entry)?;
-                                    let (entry, other) = read_u8(&entry)?;
-                                    let (entry, sh_index) = read_u16(&entry)?;
-                                    let (entry, value) = read_u64(&entry)?;
-                                    let (_entry, size) = read_u64(&entry)?;
+                                    let (entry, name) = read_u32(entry)?;
+                                    let (entry, info) = read_u8(entry)?;
+                                    let (entry, other) = read_u8(entry)?;
+                                    let (entry, sh_index) = read_u16(entry)?;
+                                    let (entry, value) = read_u64(entry)?;
+                                    let (_entry, size) = read_u64(entry)?;
 
-                                    let sh_index = sh_index
-                                        .try_into()
-                                        .map_err(|_| ElfParseError::InvalidAddressSize)?;
+                                    let sh_index = sh_index.into();
                                     let value = value
                                         .try_into()
                                         .map_err(|_| ElfParseError::InvalidAddressSize)?;

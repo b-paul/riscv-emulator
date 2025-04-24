@@ -249,7 +249,7 @@ impl Emulator {
             for i in (0..4).rev() {
                 write!(&mut file, "{:02x}", line.get(i).unwrap_or(&0))?;
             }
-            writeln!(&mut file, "")?;
+            writeln!(&mut file)?;
         }
         Ok(())
     }
