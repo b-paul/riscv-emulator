@@ -3,6 +3,7 @@ hart0:
   ISA: RV64IMCZicsr_Zifencei
   physical_addr_sz: 32
   User_Spec_Version: '2.3'
+  hw_data_misaligned_support: True
   supported_xlen: [64]
   misa:
    reset-val: 0x40001104
