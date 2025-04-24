@@ -24,14 +24,14 @@ impl Emulator {
                 }
             }
             BaseInstruction::Jalr(i, compressed) => {
-                let offset = ((i.imm as i32) << 20 >> 20) as i64 as u64 & !1;
+                let offset = ((i.imm as i32) << 20 >> 20) as i64 as u64;
                 let instroff = if compressed { 2 } else { 4 };
-                let tmp = self.x[i.rs1];
+                let tmp = self.x[i.rs1].wrapping_add(offset) & !1;
                 // We ignore the lowest bit, and since we support compressed mode we will always
                 // jump to a legal address. Thus we do not need to throw an instruction address
                 // misaligned trap.
                 self.x[i.rd] = self.pc.wrapping_add(instroff);
-                self.pc = tmp.wrapping_add(offset).wrapping_sub(instroff);
+                self.pc = tmp.wrapping_sub(instroff);
             }
             BaseInstruction::Branch(branch, i, compressed) => {
                 let offset = ((i.imm as i32) << 19 >> 19) as u64;
